@@ -1,0 +1,10 @@
+[package]
+name = "nautilus_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = {version = "0.1.85"}
+tokio = {version = "1.0.0",features = ["full"]}
+crc32fast = {version = "1.4.2"}
+futures = {version = "0.3.31"}

@@ -1,0 +1,38 @@
+[package]
+name = "data_encryption"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full","rt-multi-thread", "macros"] }
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+zeroize = "1.8.1"
+
+aes-gcm = {version = "0.10.3",optional = true}
+chacha20poly1305 = {version = "0.10",optional = true}
+des = { version = "0.8", optional = true }
+blowfish = { version = "0.9", optional = true }
+
+
+
+sha2 = {version = "0.10.8",optional = true}
+hmac = {version = "0.12.1", optional = true}
+
+pbkdf2 = {version= "0.12.2",optional = true}
+argon2 =  { version = "0.5.3", features = ["default", "simple"],optional = true }
+scrypt = {version = "0.11.0",optional = true}
+
+[features]
+default = ["aes","pbkdf"]
+chacha20 = ["chacha20poly1305"]
+aes = ["aes-gcm"]
+3des = ["des","hmac","sha2"] # Include SHA Later on 
+blwfish = ["blowfish"]
+argon = ["argon2"]
+scrypt_derive = ["scrypt"]
+pbkdf = ["pbkdf2","sha2"]
+
+symmetric_encryption = ["aes", "3des", "blwfish", "chacha20"]
+key_derivation = ["argon", "scrypt_derive", "pbkdf"]
+[dev-dependencies]
+tempfile = "3.15.0"

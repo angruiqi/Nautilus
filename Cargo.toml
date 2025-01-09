@@ -1,0 +1,21 @@
+[package]
+name = "Nautilus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+
+[workspace]
+members = [
+    "identity",          # Existing identity crate
+    "identity/key-storage",  # Key-storage crate inside identity
+    "identity/decentralized_identity",
+    "security/data_encryption", # Symmetric Encryption and Key-Derivation
+    "utilities/registry", # Generic Registry module Utilized for Backend Storage for records
+    "protocols/mdns",  # Decentralized Device/Service Discovery Protocol [Primary Protocol Used for Discovering Peers]
+    "core", 
+    "transport/tcp", 
+    "protocols/negotiation", 
+    "transport/tls",
+    ]
