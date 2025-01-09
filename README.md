@@ -1,4 +1,4 @@
-# ReadMe.md
+# Nautilus
 
 Nautilus is a Rust-based framework for developing decentralized networks and secure communication systems. It emphasizes modularity, scalability, and privacy, making it an ideal choice for exploring and building innovative network architectures.
 
