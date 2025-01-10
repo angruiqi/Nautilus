@@ -253,5 +253,91 @@ mod tests {
     
         assert_eq!(client_secret, server_secret);
     }
+
+    #[cfg(feature = "ecdsa")]
+    #[test]
+    fn test_keypair_generation_consistency() {
+        let key_pair1 = ECDSAKeyPair::generate_key_pair().expect("First key pair generation failed");
+        let key_pair2 = ECDSAKeyPair::generate_key_pair().expect("Second key pair generation failed");
+
+        assert_ne!(
+            key_pair1.get_public_key_raw_bytes(),
+            key_pair2.get_public_key_raw_bytes(),
+            "Each generated public key should be unique"
+        );
+    }
+
+    #[cfg(feature = "ecdsa")]
+    #[test]
+    fn test_unique_signatures() {
+        let data = b"Test data for signing";
+        let mut signatures = Vec::new();
+
+        for _ in 0..5 {
+            // Generate a new key pair for each signature
+            let key_pair = ECDSAKeyPair::generate_key_pair().expect("Key pair generation failed");
+
+            // Generate the signature and store it
+            let signature = key_pair.sign(data).expect("Signing failed");
+            signatures.push(signature);
+        }
+
+        // Ensure all signatures are unique
+        for i in 0..signatures.len() {
+            for j in (i + 1)..signatures.len() {
+                assert_ne!(
+                    signatures[i],
+                    signatures[j],
+                    "Signatures should be unique for the same message using different keys"
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "ecdsa")]
+    #[test]
+    fn test_key_type_return() {
+        let key_type = ECDSAKeyPair::key_type();
+        assert_eq!(key_type, "ECDSA", "The key_type() should return 'ECDSA'");
+    }
+
+    #[cfg(feature = "ecdsa")]
+    #[test]
+    fn test_sign_and_verify() {
+        let key_pair = ECDSAKeyPair::generate_key_pair().expect("Key pair generation failed");
+        let data = b"Test data for signing";
+
+        // Sign the data
+        let signature = key_pair.sign(data).expect("Signing failed");
+
+        // Verify the signature
+        let is_valid = key_pair.verify(data, &signature).expect("Verification failed");
+
+        assert!(is_valid, "Signature verification should succeed");
+    }
+
+    #[cfg(feature = "ecdsa")]
+    #[test]
+    fn test_compute_shared_secret() {
+        let key_pair1 = ECDSAKeyPair::generate_key_pair().expect("First key pair generation failed");
+        let key_pair2 = ECDSAKeyPair::generate_key_pair().expect("Second key pair generation failed");
+
+        let public_key2 = key_pair2.get_public_key_raw_bytes();
+
+        // Compute the shared secret from both perspectives
+        let shared_secret1 = key_pair1
+            .compute_shared_secret(&public_key2)
+            .expect("Shared secret computation failed for key_pair1");
+
+        let shared_secret2 = key_pair2
+            .compute_shared_secret(&key_pair1.get_public_key_raw_bytes())
+            .expect("Shared secret computation failed for key_pair2");
+
+        // Ensure the shared secrets match
+        assert_eq!(
+            shared_secret1, shared_secret2,
+            "Shared secrets computed by both parties should match"
+        );
+    }
     
 }

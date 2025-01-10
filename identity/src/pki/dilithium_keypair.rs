@@ -193,4 +193,110 @@ mod tests {
 
         // Further tests can verify against expected behaviors for small keys
     }
+
+
+    #[cfg(feature = "dilithium")]
+    #[test]
+    fn test_keypair_generation_consistency() {
+        let key_pair1 = DilithiumKeyPair::generate_key_pair().expect("First key pair generation failed");
+        let key_pair2 = DilithiumKeyPair::generate_key_pair().expect("Second key pair generation failed");
+
+        assert_ne!(
+            key_pair1.get_public_key_raw_bytes(),
+            key_pair2.get_public_key_raw_bytes(),
+            "Each generated public key should be unique"
+        );
+    }
+
+    #[cfg(feature = "dilithium")]
+    #[test]
+    fn test_unique_signatures() {
+        let data = b"Test data for signing";
+        let mut signatures = Vec::new();
+
+        for _ in 0..5 {
+            // Generate a new key pair for each signature
+            let key_pair = DilithiumKeyPair::generate_key_pair().expect("Key pair generation failed");
+
+            // Generate the signature and store it
+            let signature = key_pair.sign(data).expect("Signing failed");
+            signatures.push(signature);
+        }
+
+        // Ensure all signatures are unique
+        for i in 0..signatures.len() {
+            for j in (i + 1)..signatures.len() {
+                assert_ne!(
+                    signatures[i],
+                    signatures[j],
+                    "Signatures should be unique for the same message using different keys"
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "dilithium")]
+    #[test]
+    fn test_key_type_return() {
+        let key_type = DilithiumKeyPair::key_type();
+        assert_eq!(key_type, "Dilithium", "The key_type() should return 'Dilithium'");
+    }
+
+    #[cfg(feature = "dilithium")]
+    #[test]
+    fn test_sign_and_verify() {
+        let key_pair = DilithiumKeyPair::generate_key_pair().expect("Key pair generation failed");
+        let data = b"Test data for signing";
+
+        // Sign the data
+        let signature = key_pair.sign(data).expect("Signing failed");
+
+        // Verify the signature
+        let is_valid = key_pair.verify(data, &signature).expect("Verification failed");
+
+        assert!(is_valid, "Signature verification should succeed");
+    }
+
+    #[cfg(feature = "dilithium")]
+    #[test]
+    fn test_invalid_signature_format() {
+        let key_pair = DilithiumKeyPair::generate_key_pair().expect("Key pair generation failed");
+        let data = b"Test data for signing";
+
+        let invalid_signature = vec![0u8; 4626]; // Invalid signature length
+
+        let result = key_pair.verify(data, &invalid_signature);
+        assert!(result.is_err(), "Verification should fail for invalid signature format");
+    }
+    #[cfg(feature = "dilithium")]
+    #[test]
+    fn test_keypair_generation_stack_overflow() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+    
+        // Use catch_unwind to simulate catching a panic (like stack overflow)
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            // Call the key generation function
+            DilithiumKeyPair::generate_key_pair()
+        }));
+    
+        match result {
+            Ok(Err(PKIError::KeyPairGenerationError(msg))) => {
+                // Validate the error message for key generation failure
+                assert!(
+                    msg.contains("Key generation failed") || msg.contains("stack overflow"),
+                    "Error message should indicate a failure during key generation"
+                );
+            }
+            Err(_) => {
+                // If a panic occurs, it's treated as a simulated stack overflow
+                println!("Simulated stack overflow caught successfully.");
+            }
+            Ok(Ok(_)) => {
+                panic!("Expected stack overflow or error, but got a successful result");
+            }
+            _ => panic!("Unexpected outcome in keypair generation test"),
+        }
+    }
+    
+    
 }

@@ -201,5 +201,68 @@ mod tests {
         assert!(!is_valid, "Signature should be invalid due to incorrect length");
     }
 
+
+    #[cfg(feature = "secp256k1")]
+    #[test]
+    fn test_keypair_generation_consistency() {
+        let key_pair1 = SECP256K1KeyPair::generate_key_pair().expect("First key pair generation failed");
+        let key_pair2 = SECP256K1KeyPair::generate_key_pair().expect("Second key pair generation failed");
+
+        assert_ne!(
+            key_pair1.get_public_key_raw_bytes(),
+            key_pair2.get_public_key_raw_bytes(),
+            "Each generated public key should be unique"
+        );
+    }
+
+    #[cfg(feature = "secp256k1")]
+    #[test]
+    fn test_unique_signatures() {
+        let data = b"Test data for signing";
+        let mut signatures = Vec::new();
+
+        for _ in 0..5 {
+            // Generate a new key pair for each signature
+            let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
+
+            // Generate the signature and store it
+            let signature = key_pair.sign(data).expect("Signing failed");
+            signatures.push(signature);
+        }
+
+        // Ensure all signatures are unique
+        for i in 0..signatures.len() {
+            for j in (i + 1)..signatures.len() {
+                assert_ne!(
+                    signatures[i],
+                    signatures[j],
+                    "Signatures should be unique for the same message using different keys"
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "secp256k1")]
+    #[test]
+    fn test_key_type_return() {
+        let key_type = SECP256K1KeyPair::key_type();
+        assert_eq!(key_type, "SECP256K1", "The key_type() should return 'SECP256K1'");
+    }
+
+    #[cfg(feature = "secp256k1")]
+    #[test]
+    fn test_sign_and_verify() {
+        let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
+        let data = b"Test data for signing";
+
+        // Sign the data
+        let signature = key_pair.sign(data).expect("Signing failed");
+
+        // Verify the signature
+        let is_valid = key_pair.verify(data, &signature).expect("Verification failed");
+
+        assert!(is_valid, "Signature verification should succeed");
+    }
+
   
 }

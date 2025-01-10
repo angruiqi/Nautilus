@@ -14,7 +14,7 @@ pub use tls_handshake::TLSHandshake;
 
 use nautilus_core::connection::{Transport,Connection};
 use async_trait::async_trait;
-use negotiation::{Negotiation,CipherSuite};
+use negotiation::CipherSuite;
 use init_encryption::init_encryption;
 /// The TLS Transport implementation.
 

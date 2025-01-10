@@ -5,8 +5,8 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-rand_core = {version = "0.6"}
-serde_json = "1.0.134"
+rand_core = {version = "0.6",features = ["getrandom"]}
+serde_json = "1.0.135"
 serde = {version = "1.0.0", features = ["derive",]}
 
 rsa = {version = "0.9.6",features = ["sha2"], optional = true} # For RSA
@@ -17,6 +17,8 @@ k256 = {version="0.13.4", optional = true} # For secp256k1
 p256 = {version = "0.13.2",optional = true} # For ECDSA
 
 ed25519-dalek = {version = "2.1.1",optional = true} # For Ed25519
+
+fips203 = {version ="0.4.2",optional = true}
 
 fips204 = {version = "0.4.6",optional = true} # For Dilithium
 
@@ -35,7 +37,7 @@ ed25519 = ["ed25519-dalek"]  # Enable Ed25519 support when this feature flag is 
 dilithium = ["fips204"] # Enable Dilithium support when this feature flag is specified
 spincs = ["fips205"] # Enable Spincs+ support when this feature flag is specified
 falcon = ["pqcrypto-falcon","pqcrypto-traits"] # Not FIPS STANDARD, OFFICIAL RELEASE
-
+kyber = ["fips203"]
 [[bench]]
 name = "benchmark"
 harness = false
