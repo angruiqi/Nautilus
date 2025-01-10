@@ -8,6 +8,7 @@ fn rsa_keypair() -> Result<(), PKIError> {
   println!("Running RSA keypair example");
   // Generate a key pair
   let key_pair = RSAkeyPair::generate_key_pair()?;
+  println!("Public key : \n{:?}",key_pair.public_key);
   // Sample data to sign
   let data = b"Example data for signing";
 

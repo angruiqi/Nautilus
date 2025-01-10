@@ -1,0 +1,9 @@
+[package]
+name = "certificate_parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+x509-parser = "0.16.0"
+ring = "0.17.7"
+base64 ={ version = "0.22.0"}

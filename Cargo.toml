@@ -17,5 +17,5 @@ members = [
     "core", 
     "transport/tcp", 
     "protocols/negotiation", 
-    "transport/tls",
+    "transport/tls", "utilities/certificate_parser",
     ]
