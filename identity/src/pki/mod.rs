@@ -52,4 +52,4 @@ pub use falcon_keypair::FalconKeyPair;
 #[cfg(feature = "kyber")]
 mod kyber_keypair;
 #[cfg(feature = "kyber")]
-pub use  kyber_keypair::KyberKeypair;
+pub use  kyber_keypair::KyberKeyPair;

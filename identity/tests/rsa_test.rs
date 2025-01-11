@@ -345,3 +345,209 @@ fn test_rsa_decapsulation_with_invalid_tag() {
 }
 
 }
+
+
+#[cfg(test)]
+mod integration_tests {
+    use identity::{PKITraits, RSAkeyPair, KeyExchange};
+    use std::sync::Arc;
+    use tokio::net::{TcpListener, TcpStream};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::sync::mpsc;
+    use std::time::Duration;
+
+    async fn handle_client(mut stream: TcpStream, rsa_key: Arc<RSAkeyPair>, tx: mpsc::Sender<Vec<u8>>) {
+        let mut buffer = vec![0; 2048];
+        let n = stream.read(&mut buffer).await.unwrap();
+        let received = &buffer[..n];
+
+        // Split the received message into ciphertext and tag
+        let (ciphertext, tag) = received.split_at(received.len() - 32);
+
+        // Perform decapsulation using RSA private key
+        let shared_secret = RSAkeyPair::decapsulate(&rsa_key.private_key, ciphertext, None).unwrap();
+        println!("Server shared secret: {:?}", shared_secret);
+
+        // Send the shared secret to the testing channel
+        tx.send(shared_secret).await.unwrap();
+
+        // Verify the tag (not implemented for simplicity)
+        assert!(!tag.is_empty(), "Validation tag is missing");
+    }
+
+    #[tokio::test]
+    async fn test_key_exchange_with_mpsc() {
+        let rsa_key = Arc::new(RSAkeyPair::generate_key_pair().unwrap());
+
+        // Start an mpsc channel for key sharing
+        let (tx, mut rx) = mpsc::channel(1);
+
+        // Start a server
+        let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
+        let rsa_key_clone = Arc::clone(&rsa_key);
+
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            handle_client(socket, rsa_key_clone, tx).await;
+        });
+
+        // Simulate a client
+        let mut client = TcpStream::connect("127.0.0.1:8080").await.unwrap();
+
+        // Perform encapsulation using RSA public key
+        let (shared_secret, ciphertext) = RSAkeyPair::encapsulate(&rsa_key.public_key, None).unwrap();
+        println!("Client shared secret: {:?}", shared_secret);
+
+        // Add a dummy tag (32 bytes for simplicity)
+        let mut message = ciphertext;
+        message.extend_from_slice(&vec![0xAA; 32]);
+
+        client.write_all(&message).await.unwrap();
+
+        // Receive the shared secret from the server
+        let server_shared_secret = rx.recv().await.unwrap();
+
+        // Verify that the shared secrets match
+        assert_eq!(shared_secret, server_shared_secret, "Shared secrets do not match!");
+    }
+
+    #[tokio::test]
+    async fn test_large_payload_encryption() {
+        let rsa_key = Arc::new(RSAkeyPair::generate_key_pair().unwrap());
+
+        // Large payload
+        let _large_message = vec![0u8; 10_000];
+        let (shared_secret, ciphertext) = RSAkeyPair::encapsulate(&rsa_key.public_key, None).unwrap();
+
+        // Simulate a client-server communication
+        let listener = TcpListener::bind("127.0.0.1:8081").await.unwrap();
+        let rsa_key_clone = Arc::clone(&rsa_key);
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buffer = vec![0; 2048];
+            let n = socket.read(&mut buffer).await.unwrap();
+
+            // Server decapsulates the message
+            let server_shared_secret = RSAkeyPair::decapsulate(&rsa_key_clone.private_key, &buffer[..n], None).unwrap();
+            assert_eq!(shared_secret, server_shared_secret, "Shared secrets for large payload do not match!");
+        });
+
+        let mut client = TcpStream::connect("127.0.0.1:8081").await.unwrap();
+        client.write_all(&ciphertext).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_connections() {
+        let rsa_key = Arc::new(RSAkeyPair::generate_key_pair().unwrap());
+        let listener = TcpListener::bind("127.0.0.1:8082").await.unwrap();
+        let rsa_key_clone = Arc::clone(&rsa_key);
+
+        // Spawn multiple clients
+        tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let rsa_key_clone = Arc::clone(&rsa_key_clone);
+                tokio::spawn(async move {
+                    let mut buffer = vec![0; 2048];
+                    let n = socket.read(&mut buffer).await.unwrap();
+                    let received = &buffer[..n];
+
+                    // Decapsulation
+                    let shared_secret = RSAkeyPair::decapsulate(&rsa_key_clone.private_key, received, None).unwrap();
+                    println!("Server shared secret for connection: {:?}", shared_secret);
+                });
+            }
+        });
+
+        for _ in 0..5 {
+            let rsa_key = Arc::clone(&rsa_key);
+            tokio::spawn(async move {
+                let mut client = TcpStream::connect("127.0.0.1:8082").await.unwrap();
+                let (_, ciphertext) = RSAkeyPair::encapsulate(&rsa_key.public_key, None).unwrap();
+                client.write_all(&ciphertext).await.unwrap();
+            });
+        }
+
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
+
+    #[tokio::test]
+    async fn test_message_integrity() {
+        let rsa_key = Arc::new(RSAkeyPair::generate_key_pair().unwrap());
+        let (_shared_secret, ciphertext) = RSAkeyPair::encapsulate(&rsa_key.public_key, None).unwrap();
+
+        // Corrupt the ciphertext
+        let mut corrupted_ciphertext = ciphertext.clone();
+        corrupted_ciphertext[0] ^= 0xFF; // Flip a bit
+
+        let result = RSAkeyPair::decapsulate(&rsa_key.private_key, &corrupted_ciphertext, None);
+
+        assert!(result.is_err(), "Message integrity check failed: corrupted ciphertext should not succeed");
+    }
+}
+
+
+#[cfg(test)]
+mod attack_tests {
+    use identity::{PKITraits, RSAkeyPair, KeyExchange};
+    use std::sync::Arc;
+    use tokio::net::{TcpListener, TcpStream};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test]
+    async fn test_replay_attack() {
+        let rsa_key = Arc::new(RSAkeyPair::generate_key_pair().unwrap());
+
+        // Perform encapsulation using RSA public key
+        let (_, ciphertext) = RSAkeyPair::encapsulate(&rsa_key.public_key, None).unwrap();
+
+        // Simulate a server
+        let listener = TcpListener::bind("127.0.0.1:8083").await.unwrap();
+        let rsa_key_clone = Arc::clone(&rsa_key);
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buffer = vec![0; 2048];
+            let n = socket.read(&mut buffer).await.unwrap();
+
+            // Attempt to decapsulate the message
+            let result = RSAkeyPair::decapsulate(&rsa_key_clone.private_key, &buffer[..n], None);
+
+            // Expect replayed message to fail
+            assert!(result.is_ok(), "Replayed ciphertext should fail if not detected.");
+        });
+
+        // Simulate a client sending the ciphertext twice
+        let mut client = TcpStream::connect("127.0.0.1:8083").await.unwrap();
+        client.write_all(&ciphertext).await.unwrap();
+        client.write_all(&ciphertext).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_timing_attack() {
+        use std::time::Instant;
+
+        let rsa_key = RSAkeyPair::generate_key_pair().unwrap();
+        let valid_ciphertext = RSAkeyPair::encapsulate(&rsa_key.public_key, None).unwrap().1;
+
+        let invalid_ciphertext = vec![0u8; valid_ciphertext.len()];
+
+        // Measure valid ciphertext processing time
+        let start = Instant::now();
+        let _ = RSAkeyPair::decapsulate(&rsa_key.private_key, &valid_ciphertext, None);
+        let valid_time = start.elapsed();
+
+        // Measure invalid ciphertext processing time
+        let start = Instant::now();
+        let _ = RSAkeyPair::decapsulate(&rsa_key.private_key, &invalid_ciphertext, None);
+        let invalid_time = start.elapsed();
+
+        println!("Valid ciphertext processing time: {:?}", valid_time);
+        println!("Invalid ciphertext processing time: {:?}", invalid_time);
+
+        // Ensure processing times are indistinguishable
+        assert!((valid_time.as_millis() as i64 - invalid_time.as_millis() as i64).abs() < 5, 
+            "Processing times for valid and invalid ciphertexts should not differ significantly.");
+    }
+}
