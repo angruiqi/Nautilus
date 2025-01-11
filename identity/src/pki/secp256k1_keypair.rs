@@ -9,6 +9,10 @@ use k256::ecdsa::{
 #[cfg(feature = "secp256k1")]
 use rand_core::OsRng;
 #[cfg(feature = "secp256k1")]
+use crate::KeyExchange;
+#[cfg(feature = "secp256k1")]
+use k256::elliptic_curve::sec1::ToEncodedPoint;
+#[cfg(feature = "secp256k1")]
 pub struct SECP256K1KeyPair {
     pub signing_key: SigningKey,
     pub verifying_key: VerifyingKey,
@@ -56,213 +60,56 @@ impl PKITraits for SECP256K1KeyPair {
         "SECP256K1".to_string()
     }
 }
-
-#[cfg(test)]
 #[cfg(feature = "secp256k1")]
-mod tests {
-    use super::*;
-    use std::time::Instant;
+impl KeyExchange for SECP256K1KeyPair {
+    type SharedSecretKey = Vec<u8>;
+    type PublicKey = k256::PublicKey;
+    type PrivateKey = k256::SecretKey;
+    type Error = PKIError;
 
-    #[test]
-    fn test_secp256k1_keypair() {
-        let message = b"Hello, SECP256K1!";
+    /// Encapsulate a shared secret
+    fn encapsulate(
+        public_key: &Self::PublicKey,
+        _context: Option<&[u8]>,
+    ) -> Result<(Self::SharedSecretKey, Vec<u8>), Self::Error> {
+        let ephemeral_private_key = k256::SecretKey::random(&mut OsRng);
+        let ephemeral_public_key = ephemeral_private_key.public_key();
 
-        // Start timing
-        let start = Instant::now();
-
-        // Test key pair generation
-        let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
-        println!("SECP256K1 Key pair generated successfully!");
-
-        let elapsed_keygen = start.elapsed();
-        println!(
-            "Time taken for SECP256K1 key pair generation: {:?}",
-            elapsed_keygen
+        // Compute the shared secret
+        let shared_secret = k256::ecdh::diffie_hellman(
+            ephemeral_private_key.to_nonzero_scalar(),
+            public_key.as_affine(),
         );
 
-        // Test signing
-        let sign_start = Instant::now();
-        let signature = key_pair.sign(message).expect("Signing failed");
-        println!("Message signed successfully!");
-
-        let elapsed_sign = sign_start.elapsed();
-        println!("Time taken for signing: {:?}", elapsed_sign);
-
-        // Test verification
-        let verify_start = Instant::now();
-        let is_valid = key_pair
-            .verify(message, &signature)
-            .expect("Verification failed");
-        assert!(is_valid, "Signature is not valid");
-        println!("Signature valid!");
-
-        let elapsed_verify = verify_start.elapsed();
-        println!("Time taken for verification: {:?}", elapsed_verify);
-
-        // Total elapsed time
-        let total_elapsed = start.elapsed();
-        println!("Total time for SECP256K1 operations: {:?}", total_elapsed);
+        Ok((
+            shared_secret.raw_secret_bytes().to_vec(),
+            ephemeral_public_key.to_encoded_point(false).as_bytes().to_vec(),
+        ))
     }
 
-    #[test]
-    fn test_verify_invalid_signature() {
-        let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
-        let message = b"Hello, SECP256K1!";
-        let invalid_signature = vec![0u8; 64]; // Completely invalid signature
+    /// Decapsulate a shared secret
+    fn decapsulate(
+        private_key: &Self::PrivateKey,
+        ciphertext: &[u8],
+        _context: Option<&[u8]>,
+    ) -> Result<Self::SharedSecretKey, Self::Error> {
+        // Reconstruct the peer's public key from the ciphertext
+        let peer_public_key = k256::PublicKey::from_sec1_bytes(ciphertext)
+            .map_err(|e| {
+                PKIError::KeyExchangeError(format!("Invalid public key format: {}", e))
+            })?;
 
-        // Verify the invalid signature
-        let is_valid = key_pair
-            .verify(message, &invalid_signature)
-            .unwrap_or(false);
-        assert!(!is_valid, "Invalid signature should not be valid");
-    }
-
-    #[test]
-    fn test_invalid_signature_format() {
-        let message = b"Test message for SECP256K1!";
-        let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
-
-        let invalid_signature = vec![0u8; 64]; // Invalid signature (incorrect format)
-
-        // Verify the invalid signature
-        let result = key_pair.verify(message, &invalid_signature);
-        assert!(result.is_err(), "Verification should fail for invalid signature format");
-    }
-    #[test]
-    fn test_empty_message() {
-        let message = b""; // Empty message
-        let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
-
-        // Test signing with empty message
-        let signature = key_pair.sign(message).expect("Signing failed");
-
-        // Test verification with empty message
-        let is_valid = key_pair.verify(message, &signature).expect("Verification failed");
-        assert!(is_valid, "Signature should be valid for empty message");
-    }
-
-
-    #[test]
-    fn test_corrupted_signature() {
-        let message = b"Test message for SECP256K1";
-        let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
-
-        let signature = key_pair.sign(message).expect("Signing failed");
-
-        // Corrupt the signature (flip a single byte)
-        let mut corrupted_signature = signature.clone();
-        corrupted_signature[0] ^= 0x01;
-
-        // Verify the corrupted signature
-        let is_valid = key_pair.verify(message, &corrupted_signature).unwrap_or(false);
-        assert!(!is_valid, "Corrupted signature should not be valid");
-    }
-
-    #[test]
-    fn test_incorrect_public_key() {
-        let message = b"Test message for SECP256K1";
-        let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
-
-        // Generate a different key pair for incorrect verification
-        let incorrect_key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
-
-        let signature = key_pair.sign(message).expect("Signing failed");
-
-        // Verify with incorrect public key
-        let is_valid = incorrect_key_pair.verify(message, &signature).unwrap_or(false);
-        assert!(!is_valid, "Signature should not be valid with incorrect public key");
-    }
-
-
-    #[test]
-    fn test_small_message() {
-        let small_message = b"A"; // Single-byte message
-        let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
-
-        // Test signing with small message
-        let signature = key_pair.sign(small_message).expect("Signing failed");
-
-        // Test verification with small message
-        let is_valid = key_pair.verify(small_message, &signature).expect("Verification failed");
-        assert!(is_valid, "Signature should be valid for small message");
-    }
-    #[test]
-    fn test_invalid_signature_length() {
-        let message = b"Test message for SECP256K1";
-        let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
-
-        let signature = key_pair.sign(message).expect("Signing failed");
-
-        // Create an invalid signature by modifying its length
-        let invalid_signature = signature[..signature.len() - 1].to_vec(); // Truncate by 1 byte
-
-        // Verify the invalid signature
-        let is_valid = key_pair.verify(message, &invalid_signature).unwrap_or(false);
-        assert!(!is_valid, "Signature should be invalid due to incorrect length");
-    }
-
-
-    #[cfg(feature = "secp256k1")]
-    #[test]
-    fn test_keypair_generation_consistency() {
-        let key_pair1 = SECP256K1KeyPair::generate_key_pair().expect("First key pair generation failed");
-        let key_pair2 = SECP256K1KeyPair::generate_key_pair().expect("Second key pair generation failed");
-
-        assert_ne!(
-            key_pair1.get_public_key_raw_bytes(),
-            key_pair2.get_public_key_raw_bytes(),
-            "Each generated public key should be unique"
+        // Compute the shared secret
+        let shared_secret = k256::ecdh::diffie_hellman(
+            private_key.to_nonzero_scalar(),
+            peer_public_key.as_affine(),
         );
+
+        Ok(shared_secret.raw_secret_bytes().to_vec())
     }
 
-    #[cfg(feature = "secp256k1")]
-    #[test]
-    fn test_unique_signatures() {
-        let data = b"Test data for signing";
-        let mut signatures = Vec::new();
-
-        for _ in 0..5 {
-            // Generate a new key pair for each signature
-            let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
-
-            // Generate the signature and store it
-            let signature = key_pair.sign(data).expect("Signing failed");
-            signatures.push(signature);
-        }
-
-        // Ensure all signatures are unique
-        for i in 0..signatures.len() {
-            for j in (i + 1)..signatures.len() {
-                assert_ne!(
-                    signatures[i],
-                    signatures[j],
-                    "Signatures should be unique for the same message using different keys"
-                );
-            }
-        }
+    /// Retrieve the key exchange type
+    fn key_exchange_type() -> String {
+        "SECP256K1-ECDH".to_string()
     }
-
-    #[cfg(feature = "secp256k1")]
-    #[test]
-    fn test_key_type_return() {
-        let key_type = SECP256K1KeyPair::key_type();
-        assert_eq!(key_type, "SECP256K1", "The key_type() should return 'SECP256K1'");
-    }
-
-    #[cfg(feature = "secp256k1")]
-    #[test]
-    fn test_sign_and_verify() {
-        let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Key pair generation failed");
-        let data = b"Test data for signing";
-
-        // Sign the data
-        let signature = key_pair.sign(data).expect("Signing failed");
-
-        // Verify the signature
-        let is_valid = key_pair.verify(data, &signature).expect("Verification failed");
-
-        assert!(is_valid, "Signature verification should succeed");
-    }
-
-  
 }

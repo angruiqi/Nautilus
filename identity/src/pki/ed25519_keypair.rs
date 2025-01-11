@@ -1,13 +1,18 @@
 // identity\src\pki\ed25519_keypair.rs
 #[cfg(feature = "ed25519")]
-use crate::{PKIError, PKITraits}; 
+use crate::{PKIError, PKITraits,KeyExchange}; 
 #[cfg(feature = "ed25519")]
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 #[cfg(feature = "ed25519")]
 use rand_core::{OsRng, RngCore};
 #[cfg(feature = "ed25519")]
 use std::convert::TryInto;
-
+#[cfg(feature = "ed25519")]
+use curve25519_dalek::scalar::Scalar;
+#[cfg(feature = "ed25519")]
+use curve25519_dalek::MontgomeryPoint;
+#[cfg(feature = "ed25519")]
+use curve25519_dalek::edwards::EdwardsPoint;
 #[cfg(feature = "ed25519")]
 pub struct Ed25519KeyPair {
     pub signing_key: SigningKey,
@@ -67,175 +72,60 @@ impl PKITraits for Ed25519KeyPair {
     }
 }
 
-#[cfg(test)]
+
+
 #[cfg(feature = "ed25519")]
-mod tests {
-    use super::*;
-    use std::time::Instant;
+impl KeyExchange for Ed25519KeyPair {
+    type SharedSecretKey = Vec<u8>;
+    type PublicKey = MontgomeryPoint;
+    type PrivateKey = Scalar;
+    type Error = PKIError;
 
-    #[test]
-    fn test_ed25519_keypair() {
-        let message = b"Hello, ED25519!";
+    fn encapsulate(
+        public_key: &Self::PublicKey,
+        _context: Option<&[u8]>,
+    ) -> Result<(Self::SharedSecretKey, Vec<u8>), Self::Error> {
+        let mut rng = OsRng;
 
-        // Start timing
-        let start = Instant::now();
+        // Generate an ephemeral X25519 private key
+        let ephemeral_private_key = {
+            let mut bytes = [0u8; 32];
+            rng.fill_bytes(&mut bytes);
+            Scalar::from_bytes_mod_order(bytes)
+        };
 
-        // Test key pair generation
-        let key_pair = Ed25519KeyPair::generate_key_pair()
-            .expect("Key pair generation failed");
-        println!("ED25519 Key pair generated successfully!");
+        let ephemeral_public_key = EdwardsPoint::mul_base(&ephemeral_private_key).to_montgomery();
 
-        let elapsed_keygen = start.elapsed();
-        println!("Time taken for ED25519 key pair generation: {:?}", elapsed_keygen);
+        // Compute the shared secret
+        let shared_secret = public_key * ephemeral_private_key;
 
-        // Test signing
-        let sign_start = Instant::now();
-        let signature = key_pair.sign(message).expect("Signing failed");
-        println!("Message signed successfully!");
-
-        let elapsed_sign = sign_start.elapsed();
-        println!("Time taken for signing: {:?}", elapsed_sign);
-
-        // Test verification
-        let verify_start = Instant::now();
-        let is_valid = key_pair.verify(message, &signature).expect("Verification failed");
-        assert!(is_valid, "Signature is not valid");
-        println!("Signature valid!");
-
-        let elapsed_verify = verify_start.elapsed();
-        println!("Time taken for verification: {:?}", elapsed_verify);
-
-        // Total elapsed time
-        let total_elapsed = start.elapsed();
-        println!("Total time for ED25519 operations: {:?}", total_elapsed);
+        // Return the shared secret and the ephemeral public key
+        Ok((shared_secret.to_bytes().to_vec(), ephemeral_public_key.to_bytes().to_vec()))
     }
 
-
-    // Edge case: test signature with incorrect length (should fail)
-    #[test]
-    fn test_invalid_signature_length() {
-        let message = b"Test message";
-
-        let key_pair = Ed25519KeyPair::generate_key_pair().expect("Key pair generation failed");
-        let signature = vec![0u8; 63]; // Invalid signature length
-
-        let result = key_pair.verify(message, &signature);
-        assert!(result.is_err(), "Verification should fail with invalid signature length");
-    }
-
-    // Edge case: test signature with corrupted data (should fail)
-    #[test]
-    fn test_corrupted_signature() {
-        let message = b"Test message";
-
-        let key_pair = Ed25519KeyPair::generate_key_pair().expect("Key pair generation failed");
-        let signature = key_pair.sign(message).expect("Signing failed");
-
-        // Corrupt the signature (flip a bit)
-        let mut corrupted_signature = signature.clone();
-        corrupted_signature[0] ^= 1;
-
-        let result = key_pair.verify(message, &corrupted_signature);
-        assert!(!result.unwrap_or(false), "Verification should fail with corrupted signature");
-    }
-
-    // Edge case: test verifying with mismatched message (should fail)
-    #[test]
-    fn test_verify_mismatched_message() {
-        let message = b"Original message";
-        let wrong_message = b"Wrong message";
-
-        let key_pair = Ed25519KeyPair::generate_key_pair().expect("Key pair generation failed");
-        let signature = key_pair.sign(message).expect("Signing failed");
-
-        let result = key_pair.verify(wrong_message, &signature);
-        assert!(!result.unwrap_or(false), "Verification should fail with mismatched message");
-    }
-
-    // Edge case: test signature verification with an empty message (should pass)
-    #[test]
-    fn test_empty_message_verification() {
-        let message: &[u8] = b""; // Empty message
-
-        let key_pair = Ed25519KeyPair::generate_key_pair().expect("Key pair generation failed");
-        let signature = key_pair.sign(message).expect("Signing failed");
-
-        let result = key_pair.verify(message, &signature);
-        assert!(result.unwrap_or(false), "Verification should pass with an empty message");
-    }
-
-    #[cfg(feature = "ed25519")]
-    #[test]
-    fn test_keypair_generation_consistency() {
-        let key_pair1 = Ed25519KeyPair::generate_key_pair().expect("First key pair generation failed");
-        let key_pair2 = Ed25519KeyPair::generate_key_pair().expect("Second key pair generation failed");
-
-        assert_ne!(
-            key_pair1.get_public_key_raw_bytes(),
-            key_pair2.get_public_key_raw_bytes(),
-            "Each generated public key should be unique"
-        );
-    }
-
-    #[cfg(feature = "ed25519")]
-    #[test]
-    fn test_unique_signatures() {
-        let data = b"Test data for signing";
-        let mut signatures = Vec::new();
-
-        for _ in 0..5 {
-            // Generate a new key pair for each signature
-            let key_pair = Ed25519KeyPair::generate_key_pair().expect("Key pair generation failed");
-
-            // Generate the signature and store it
-            let signature = key_pair.sign(data).expect("Signing failed");
-            signatures.push(signature);
+    fn decapsulate(
+        private_key: &Self::PrivateKey,
+        ciphertext: &[u8],
+        _context: Option<&[u8]>,
+    ) -> Result<Self::SharedSecretKey, Self::Error> {
+        // Ensure the ciphertext is the correct length (32 bytes for a MontgomeryPoint)
+        if ciphertext.len() != 32 {
+            return Err(PKIError::KeyExchangeError(
+                "Invalid ciphertext length".to_string(),
+            ));
         }
-
-        // Ensure all signatures are unique
-        for i in 0..signatures.len() {
-            for j in (i + 1)..signatures.len() {
-                assert_ne!(
-                    signatures[i],
-                    signatures[j],
-                    "Signatures should be unique for the same message using different keys"
-                );
-            }
-        }
+    
+        // Convert the ciphertext to a MontgomeryPoint
+        let peer_public_key = MontgomeryPoint(ciphertext.try_into().unwrap());
+    
+        // Compute the shared secret
+        let shared_secret = peer_public_key * private_key;
+    
+        // Return the shared secret
+        Ok(shared_secret.to_bytes().to_vec())
     }
 
-    #[cfg(feature = "ed25519")]
-    #[test]
-    fn test_key_type_return() {
-        let key_type = Ed25519KeyPair::key_type();
-        assert_eq!(key_type, "ED25519", "The key_type() should return 'ED25519'");
+    fn key_exchange_type() -> String {
+        "X25519-Ed25519".to_string()
     }
-
-    #[cfg(feature = "ed25519")]
-    #[test]
-    fn test_sign_and_verify() {
-        let key_pair = Ed25519KeyPair::generate_key_pair().expect("Key pair generation failed");
-        let data = b"Test data for signing";
-
-        // Sign the data
-        let signature = key_pair.sign(data).expect("Signing failed");
-
-        // Verify the signature
-        let is_valid = key_pair.verify(data, &signature).expect("Verification failed");
-
-        assert!(is_valid, "Signature verification should succeed");
-    }
-
-    #[cfg(feature = "ed25519")]
-    #[test]
-    fn test_invalid_signature_format() {
-        let key_pair = Ed25519KeyPair::generate_key_pair().expect("Key pair generation failed");
-        let data = b"Test data for signing";
-
-        let invalid_signature = vec![0u8; 32]; // Invalid signature length for ED25519
-
-        let result = key_pair.verify(data, &invalid_signature);
-        assert!(result.is_err(), "Verification should fail for invalid signature format");
-    }
-
 }

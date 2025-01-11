@@ -12,7 +12,7 @@ mod pki_error;
 // Module containing specific implementations of cryptographic algorithms.
 mod pki;
 // Module contains the trait for Key Exchange Mechanism
-mod key_exchnage_traits;
+mod key_exchange;
 /// # Overview
 /// This library is designed to facilitate cryptographic operations for
 /// secure communication and data integrity. By using standardized algorithms
@@ -29,7 +29,7 @@ mod key_exchnage_traits;
 /// ### Example
 /// ```rust
 /// use identity::{PKITraits, PKIError};
-/// use identity::pki::rsa::RSAkeyPair;
+/// use identity::RSAkeyPair;
 ///
 /// fn main() -> Result<(), PKIError> {
 ///     // Generate a new RSA key pair
@@ -54,4 +54,4 @@ pub use pki_error::PKIError;
 // Publicly export all contents of the `pki` module for external use.
 pub use pki::*;
 // Publicly export the `KeyExchange` trait for use by external Modules
-pub use key_exchnage_traits::KeyExchange;
+pub use key_exchange::KeyExchange;

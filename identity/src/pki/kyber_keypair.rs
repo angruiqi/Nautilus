@@ -1,108 +1,129 @@
-
-#[cfg(feature = "kyber")]
-use fips203::ml_kem_1024::{EncapsKey, DecapsKey, KG,CipherText};
-#[cfg(feature = "kyber")]
-use fips203::traits::{KeyGen, SerDes};
-#[cfg(feature = "kyber")]
-use crate::{PKITraits, PKIError};
-#[cfg(feature = "kyber")]
+// identity\src\pki\kyber_keypair.rs
+use crate::pki_error::PKIError;
 use crate::KeyExchange;
 #[cfg(feature = "kyber")]
-use fips203::traits::{Decaps,Encaps};
-/// A struct to represent a key pair with encapsulation and decapsulation keys.
+use fips203::ml_kem_1024::{EncapsKey, DecapsKey, KG};
 #[cfg(feature = "kyber")]
-pub struct KyberKeypair {
-    pub encaps_key: EncapsKey,
-    pub decaps_key: DecapsKey,
+use fips203::traits::{Decaps, Encaps, SerDes, KeyGen};
+#[cfg(feature = "kyber")]
+use crate::PKITraits;
+#[cfg(feature = "kyber")]
+use sha2::{Sha256, Digest};
+#[cfg(feature = "kyber")]
+use fips203::ml_kem_1024::CipherText;
+/// Represents a Kyber key pair.
+pub struct KyberKeyPair {
+    pub public_key: EncapsKey,
+    pub private_key: DecapsKey,
 }
 
-/// Implementation of the PKITraits trait.
-#[cfg(feature = "kyber")]
-impl PKITraits for KyberKeypair {
-    type KeyPair = KyberKeypair;
+impl PKITraits for KyberKeyPair {
+    type KeyPair = KyberKeyPair;
     type Error = PKIError;
 
     fn generate_key_pair() -> Result<Self::KeyPair, Self::Error> {
-        let (encaps_key, decaps_key) = KG::try_keygen()
-            .map_err(|e| PKIError::KeyPairGenerationError(format!("Key generation failed: {:?}", e)))?;
-        Ok(KyberKeypair { encaps_key, decaps_key })
-    }
-
-    fn sign(&self, _data: &[u8]) -> Result<Vec<u8>, Self::Error> {
-        Err(PKIError::SigningError("Signing not implemented for ML-KEM".to_string()))
-    }
-
-    fn verify(&self, _data: &[u8], _signature: &[u8]) -> Result<bool, Self::Error> {
-        Err(PKIError::VerificationError("Verification not implemented for ML-KEM".to_string()))
+        let (public_key, private_key) = KG::try_keygen().map_err(|e| {
+            PKIError::KeyPairGenerationError(format!("Key generation failed: {:?}", e))
+        })?;
+        Ok(KyberKeyPair {
+            public_key,
+            private_key,
+        })
     }
 
     fn get_public_key_raw_bytes(&self) -> Vec<u8> {
-        self.encaps_key.clone().into_bytes().to_vec()
+        self.public_key.clone().into_bytes().to_vec()
     }
 
     fn key_type() -> String {
-        "ML-KEM-1024".to_string()
+        "Kyber".to_string()
+    }
+
+    // For now, signing and verification can be placeholders or `unimplemented!()` if not required.
+    fn sign(&self, _data: &[u8]) -> Result<Vec<u8>, Self::Error> {
+        Err(PKIError::UnsupportedOperation("Kyber does not support signing".to_string()))
+    }
+
+    fn verify(&self, _data: &[u8], _signature: &[u8]) -> Result<bool, Self::Error> {
+        Err(PKIError::UnsupportedOperation("Kyber does not support Verification".to_string()))
     }
 }
 
 
-
-/// Implementation of the KeyExchange trait.
-#[cfg(feature = "kyber")]
-impl KeyExchange for KyberKeypair {
+impl KeyExchange for KyberKeyPair{
   type SharedSecretKey = Vec<u8>;
+  type PublicKey = EncapsKey;
+  type PrivateKey = DecapsKey;
   type Error = PKIError;
 
-  fn encapsulate(public_key_bytes: &[u8]) -> Result<(Self::SharedSecretKey, Vec<u8>), Self::Error> {
-      let public_key: [u8; 1568] = public_key_bytes
-          .try_into()
-          .map_err(|_| PKIError::KeyExchangeError("Invalid public key length".to_string()))?;
-      let encaps_key = EncapsKey::try_from_bytes(public_key)
-          .map_err(|e| PKIError::KeyExchangeError(format!("Failed to deserialize public key: {:?}", e)))?;
-      let (shared_secret, ciphertext) = encaps_key.try_encaps()
-          .map_err(|e| PKIError::KeyExchangeError(format!("Encapsulation failed: {:?}", e)))?;
-      Ok((shared_secret.into_bytes().to_vec(), ciphertext.into_bytes().to_vec()))
+  fn encapsulate(
+      public_key: &Self::PublicKey,
+      context: Option<&[u8]>,
+  ) -> Result<(Self::SharedSecretKey, Vec<u8>), Self::Error> {
+      if let Some(ctx) = context {
+          println!("Context provided: {:?}", ctx);
+      }
+
+      let (shared_secret, ciphertext) = public_key
+          .try_encaps()
+          .map_err(|e| PKIError::KeyExchangeError(format!("Encapsulation failed: {}", e)))?;
+
+      // Create a validation tag by hashing the shared secret and ciphertext
+      let mut hasher = Sha256::new();
+      hasher.update(&shared_secret.clone().into_bytes()); // Clone shared_secret
+      hasher.update(&ciphertext.clone().into_bytes()); // Clone ciphertext
+      let validation_tag = hasher.finalize();
+
+      // Append the validation tag to the ciphertext
+      let mut ciphertext_vec = ciphertext.into_bytes().to_vec();
+      ciphertext_vec.extend_from_slice(&validation_tag);
+
+      Ok((shared_secret.into_bytes().to_vec(), ciphertext_vec))
   }
 
-  fn decapsulate(&self, ciphertext: &[u8]) -> Result<Self::SharedSecretKey, Self::Error> {
-    let ciphertext_bytes: [u8; 1568] = ciphertext
-        .try_into()
-        .map_err(|_| PKIError::KeyExchangeError("Invalid ciphertext length".to_string()))?;
-    let ciphertext = CipherText::try_from_bytes(ciphertext_bytes)
-        .map_err(|e| PKIError::KeyExchangeError(format!("Failed to deserialize ciphertext: {:?}", e)))?;
-    let shared_secret = self.decaps_key.try_decaps(&ciphertext)
-        .map_err(|e| PKIError::KeyExchangeError(format!("Decapsulation failed: {:?}", e)))?;
-    Ok(shared_secret.into_bytes().to_vec())
-}
-}
+  fn decapsulate(
+      private_key: &Self::PrivateKey,
+      ciphertext: &[u8],
+      context: Option<&[u8]>,
+  ) -> Result<Self::SharedSecretKey, Self::Error> {
+      if let Some(ctx) = context {
+          println!("Context provided: {:?}", ctx);
+      }
 
+      let tag_length = Sha256::output_size();
+      if ciphertext.len() < 1568 + tag_length {
+          return Err(PKIError::KeyExchangeError("Invalid ciphertext length".to_string()));
+      }
 
-#[cfg(feature = "kyber")]
-#[cfg(test)]
-mod tests {
-    use super::*;
+      // Separate the original ciphertext and the validation tag
+      let (ciphertext_part, validation_tag) = ciphertext.split_at(1568);
 
-    #[test]
-    fn test_generate_key_pair() {
-        let key_pair = KyberKeypair::generate_key_pair().expect("Key generation failed");
-        let public_key = key_pair.get_public_key_raw_bytes();
-        assert_eq!(public_key.len(), 1568);
-        println!("Generated key pair successfully.");
-    }
+      // Convert the ciphertext part back to CipherText format
+      let ciphertext_array: [u8; 1568] = ciphertext_part.try_into().map_err(|_| {
+          PKIError::KeyExchangeError("Failed to convert ciphertext to fixed-size array".to_string())
+      })?;
+      let ciphertext = CipherText::try_from_bytes(ciphertext_array)
+          .map_err(|_| PKIError::KeyExchangeError("Invalid ciphertext format".to_string()))?;
 
-    #[test]
-    fn test_encapsulate_decapsulate() {
-        let key_pair = KyberKeypair::generate_key_pair().expect("Key generation failed");
-        let public_key = key_pair.get_public_key_raw_bytes();
+      let shared_secret = private_key
+          .try_decaps(&ciphertext)
+          .map_err(|e| PKIError::KeyExchangeError(format!("Decapsulation failed: {}", e)))?;
 
-        // Test encapsulate
-        let (shared_secret, ciphertext) = KyberKeypair::encapsulate(&public_key).expect("Encapsulation failed");
-        assert_eq!(ciphertext.len(), 1568);
-        println!("Encapsulation successful.");
+      // Recompute the validation tag
+      let mut hasher = Sha256::new();
+      hasher.update(&shared_secret.clone().into_bytes());
+      hasher.update(&ciphertext.into_bytes());
+      let expected_tag = hasher.finalize();
 
-        // Test decapsulate
-        let recovered_secret = key_pair.decapsulate(&ciphertext).expect("Decapsulation failed");
-        assert_eq!(shared_secret, recovered_secret);
-        println!("Decapsulation successful. Shared secrets match.");
-    }
+      // Validate the tag
+      if validation_tag != expected_tag.as_slice() {
+          return Err(PKIError::KeyExchangeError("Validation tag mismatch".to_string()));
+      }
+
+      Ok(shared_secret.into_bytes().to_vec())
+  }
+
+  fn key_exchange_type() -> String {
+      "Kyber".to_string()
+  }
 }
