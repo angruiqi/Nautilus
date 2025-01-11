@@ -3,7 +3,7 @@
 #[cfg(feature = "dilithium")]
 mod tests {
     use std::time::Instant;
-    use identity::{DilithiumKeyPair,PKITraits};
+    use identity::{DilithiumKeyPair,PKITraits,PKIError};
 
     #[cfg(feature = "dilithium")]
     #[test]
@@ -194,35 +194,35 @@ mod tests {
         assert!(result.is_err(), "Verification should fail for invalid signature format");
     }
    
-    // #[cfg(feature = "dilithium")]
-    // #[test]
-    // fn test_keypair_generation_stack_overflow() {
-    //     use std::panic::{catch_unwind, AssertUnwindSafe};
+    #[cfg(feature = "dilithium")]
+    #[test]
+    fn test_keypair_generation_stack_overflow() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
     
-    //     // Use catch_unwind to simulate catching a panic (like stack overflow)
-    //     let result = catch_unwind(AssertUnwindSafe(|| {
-    //         // Call the key generation function
-    //         DilithiumKeyPair::generate_key_pair()
-    //     }));
+        // Use catch_unwind to simulate catching a panic (like stack overflow)
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            // Call the key generation function
+            DilithiumKeyPair::generate_key_pair()
+        }));
     
-    //     match result {
-    //         Ok(Err(PKIError::KeyPairGenerationError(msg))) => {
-    //             // Validate the error message for key generation failure
-    //             assert!(
-    //                 msg.contains("Key generation failed") || msg.contains("stack overflow"),
-    //                 "Error message should indicate a failure during key generation"
-    //             );
-    //         }
-    //         Err(_) => {
-    //             // If a panic occurs, it's treated as a simulated stack overflow
-    //             println!("Simulated stack overflow caught successfully.");
-    //         }
-    //         Ok(Ok(_)) => {
-    //             panic!("Expected stack overflow or error, but got a successful result");
-    //         }
-    //         _ => panic!("Unexpected outcome in keypair generation test"),
-    //     }
-    // }
+        match result {
+            Ok(Err(PKIError::KeyPairGenerationError(msg))) => {
+                // Validate the error message for key generation failure
+                assert!(
+                    msg.contains("Key generation failed") || msg.contains("stack overflow"),
+                    "Error message should indicate a failure during key generation"
+                );
+            }
+            Err(_) => {
+                // If a panic occurs, it's treated as a simulated stack overflow
+                println!("Simulated stack overflow caught successfully.");
+            }
+            Ok(Ok(_)) => {
+                panic!("Expected stack overflow or error, but got a successful result");
+            }
+            _ => panic!("Unexpected outcome in keypair generation test"),
+        }
+    }
     
     
 }
