@@ -181,7 +181,7 @@ mod tests {
         let bob_private_key = Scalar::from_bytes_mod_order(bob_key_pair.signing_key.to_bytes());
 
         // Convert verifying keys to Montgomery points (public keys for X25519)
-        let alice_public_key = EdwardsPoint::mul_base(&alice_private_key).to_montgomery();
+        let _alice_public_key = EdwardsPoint::mul_base(&alice_private_key).to_montgomery();
         let bob_public_key = EdwardsPoint::mul_base(&bob_private_key).to_montgomery();
 
         // Perform key exchange

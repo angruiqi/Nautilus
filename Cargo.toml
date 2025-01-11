@@ -16,6 +16,5 @@ members = [
     "protocols/mdns",  # Decentralized Device/Service Discovery Protocol [Primary Protocol Used for Discovering Peers]
     "core", 
     "transport/tcp", 
-    "protocols/negotiation", 
-    "transport/tls", "utilities/certificate_parser",
+    "utilities/certificate_parser",
     ]

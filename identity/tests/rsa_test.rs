@@ -81,7 +81,7 @@ mod tests {
         let is_valid = key_pair.verify(&large_message, &signature).expect("Verification failed");
         assert!(is_valid, "Signature should be valid for large message");
     }
-
+    #[cfg(feature = "pki_rsa")]
     #[test]
     fn test_corrupted_signature() {
         let message = b"Test message for RSA";
@@ -299,7 +299,7 @@ mod tests {
             "Session keys should match"
         );
     }
-
+    #[cfg(feature = "pki_rsa")]
     #[test]
 fn test_rsa_encapsulation_and_decapsulation_with_valid_tag() {
     // Generate RSA key pair
@@ -320,7 +320,7 @@ fn test_rsa_encapsulation_and_decapsulation_with_valid_tag() {
         "Session keys should match"
     );
 }
-
+#[cfg(feature = "pki_rsa")]
 #[test]
 fn test_rsa_decapsulation_with_invalid_tag() {
     // Generate RSA key pair
@@ -346,7 +346,7 @@ fn test_rsa_decapsulation_with_invalid_tag() {
 
 }
 
-
+#[cfg(feature = "pki_rsa")]
 #[cfg(test)]
 mod integration_tests {
     use identity::{PKITraits, RSAkeyPair, KeyExchange};
@@ -487,7 +487,7 @@ mod integration_tests {
     }
 }
 
-
+#[cfg(feature = "pki_rsa")]
 #[cfg(test)]
 mod attack_tests {
     use identity::{PKITraits, RSAkeyPair, KeyExchange};

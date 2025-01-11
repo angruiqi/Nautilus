@@ -30,7 +30,7 @@ pqcrypto-traits = {version = "0.3.5",optional = true} # For Falcon
 
 
 [features]
-default = ["pki_rsa"] # default features
+default = [] # default features
 pki_rsa = ["rsa","sha2"] # rsa features
 secp256k1 = ["k256"] # secp256k1 features
 ecdsa = ["p256","sha2"] # ecdsa features

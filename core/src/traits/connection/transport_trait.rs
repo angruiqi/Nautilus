@@ -1,4 +1,4 @@
-
+// core\src\traits\connection\transport_trait.rs
 use async_trait::async_trait;
 
 #[async_trait]
@@ -21,6 +21,5 @@ pub trait TransportListener<C, E>: Send + Sync {
 }
 
 pub trait Middleware<C>: Send + Sync {
-    /// Wraps a connection with additional functionality.
     fn wrap_connection(&self, connection: C) -> C;
 }

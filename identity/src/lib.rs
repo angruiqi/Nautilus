@@ -23,29 +23,6 @@ mod key_exchange;
 /// - `pki_error`: Provides a comprehensive error handling mechanism for cryptographic operations.
 /// - `pki`: Contains the implementations for supported cryptographic algorithms.
 ///
-/// ## Usage
-/// Import the desired algorithm and use the provided methods for key generation, signing, and verification.
-///
-/// ### Example
-/// ```rust
-/// use identity::{PKITraits, PKIError};
-/// use identity::RSAkeyPair;
-///
-/// fn main() -> Result<(), PKIError> {
-///     // Generate a new RSA key pair
-///     let key_pair = RSAkeyPair::generate_key_pair()?;
-///
-///     // Sign a message
-///     let message = b"Hello, world!";
-///     let signature = key_pair.sign(message)?;
-///
-///     // Verify the signature
-///     let is_valid = key_pair.verify(message, &signature)?;
-///     assert!(is_valid, "Signature verification failed");
-///
-///     Ok(())
-/// }
-
 
 // Publicly export the `PKITraits` trait for use by external modules.
 pub use pki_trait::PKITraits;
