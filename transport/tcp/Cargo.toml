@@ -7,6 +7,8 @@ edition = "2021"
 nautilus_core = {path = "../../core"}
 tokio = {version = "1.0.0",features = ["full"]}
 async-trait = {version = "0.1.85"}
-
+identity = { path = "../../identity", default-features = false ,optional = true}
+data_encryption = {path = "../../security/data_encryption",default_features = false,optional = true}
 [features]
 framing = []
+secureconnection = ["identity/kyber", "data_encryption/aes"]

@@ -8,3 +8,6 @@ async-trait = {version = "0.1.85"}
 tokio = {version = "1.0.0",features = ["full"]}
 crc32fast = {version = "1.4.2"}
 futures = {version = "0.3.31"}
+
+identity = { path = "../identity", default-features = false }
+data_encryption = {path = "../security/data_encryption",default_features = false}

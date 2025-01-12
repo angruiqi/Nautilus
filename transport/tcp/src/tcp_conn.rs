@@ -6,15 +6,121 @@ use nautilus_core::connection::{Connection, ConnectionError,Transport,TransportL
 use nautilus_core::event_bus::EventBus;
 use std::sync::Arc;
 use crate::tcp_events::TcpEvent;
+#[cfg(feature = "secureconnection")]
+use identity::{KyberKeyPair, KeyExchange};
 
-#[cfg(feature="framing")]
-use nautilus_core::connection::framing::{Framing,FramingError};
+#[cfg(feature = "secureconnection")]
+mod secure_connection {
+    use tokio::net::TcpStream;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use identity::{KyberKeyPair, KeyExchange};
+    use data_encryption::{Aes256GcmEncryption, SymmetricEncryption};
+    use nautilus_core::connection::ConnectionError;
+
+    #[derive(Debug)]
+    pub struct SecureModule {
+        pub is_secure: bool,
+        pub shared_secret: Option<Vec<u8>>,
+        pub encryption: Option<Aes256GcmEncryption>,
+    }
+
+    impl SecureModule {
+        pub fn new() -> Self {
+            SecureModule {
+                is_secure: false,
+                shared_secret: None,
+                encryption: None,
+            }
+        }
+
+        pub fn set_shared_secret(&mut self, secret: Vec<u8>) -> Result<(), String> {
+            self.shared_secret = Some(secret.clone());
+            self.encryption = Some(Aes256GcmEncryption::new(secret, vec![0u8; 12])?);
+            self.is_secure = true;
+            Ok(())
+        }
+
+        pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
+            if !self.is_secure {
+                return Err("Connection is not secure".to_string());
+            }
+            self.encryption
+                .as_ref()
+                .ok_or("Encryption module is not initialized".to_string())?
+                .encrypt(plaintext)
+        }
+
+        pub fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, String> {
+            if !self.is_secure {
+                return Err("Connection is not secure".to_string());
+            }
+            self.encryption
+                .as_ref()
+                .ok_or("Encryption module is not initialized".to_string())?
+                .decrypt(ciphertext)
+        }
+        pub async fn perform_handshake(
+            &mut self,
+            stream: &mut TcpStream,
+            local_keypair: KyberKeyPair,
+            peer_public_key: Option<KyberKeyPair>,
+            is_client: bool,
+        ) -> Result<(), ConnectionError> {
+            if is_client {
+                // Client-side handshake
+                if let Some(peer_keypair) = peer_public_key {
+                    println!("Client: Performing key encapsulation...");
+let (shared_secret, ciphertext) = KyberKeyPair::encapsulate(&peer_keypair.public_key, None)
+    .map_err(|e| ConnectionError::Generic(format!("Key exchange failed: {}", e)))?;
+println!("Client: Ciphertext length = {}", ciphertext.len());
+
+println!("Client: Sending ciphertext...");
+stream
+    .write_all(&ciphertext)
+    .await
+    .map_err(|e| ConnectionError::SendFailed(e.to_string()))?;
+        
+                    self.set_shared_secret(shared_secret)
+                        .map_err(|e| ConnectionError::Generic(e))?;
+                    println!("Client handshake completed.");
+                } else {
+                    return Err(ConnectionError::Generic(
+                        "Client requires peer public key for handshake.".to_string(),
+                    ));
+                }
+            } else {
+                // Server-side handshake
+                println!("Server: Waiting for ciphertext...");
+let mut buffer = vec![0u8; 1600]; // Update this to match the actual ciphertext size if needed
+let size = stream
+    .read_exact(&mut buffer)
+    .await
+    .map_err(|e| ConnectionError::ReceiveFailed(e.to_string()))?;
+println!("Server: Received ciphertext length = {}", size);
+
+println!("Server: Performing key decapsulation...");
+let shared_secret = KyberKeyPair::decapsulate(&local_keypair.private_key, &buffer, None)
+    .map_err(|e| ConnectionError::Generic(format!("Key exchange failed: {}", e)))?;
+        
+                self.set_shared_secret(shared_secret)
+                    .map_err(|e| ConnectionError::Generic(e))?;
+                println!("Server handshake completed.");
+            }
+        
+            Ok(())
+        }
+    }        
+}
+
 #[derive(Debug)]
 pub struct TcpConnection {
-    stream: Option<TcpStream>,
-    conn_event_bus: Arc<EventBus<ConnectionEvent>>, // EventBus for generic connection events
-    tcp_event_bus: Arc<EventBus<TcpEvent>>,        // EventBus for TCP-specific events
+    pub stream: Option<TcpStream>,
+    conn_event_bus: Arc<EventBus<ConnectionEvent>>,
+    tcp_event_bus: Arc<EventBus<TcpEvent>>,
+    #[cfg(feature = "secureconnection")]
+    secure_module: secure_connection::SecureModule,
 }
+
 impl TcpConnection {
     pub fn new(
         conn_event_bus: Arc<EventBus<ConnectionEvent>>,
@@ -24,6 +130,8 @@ impl TcpConnection {
             stream: None,
             conn_event_bus,
             tcp_event_bus,
+            #[cfg(feature = "secureconnection")]
+            secure_module: secure_connection::SecureModule::new(),
         }
     }
 
@@ -34,84 +142,34 @@ impl TcpConnection {
     async fn publish_tcp_event(&self, event: TcpEvent) {
         self.tcp_event_bus.publish(event).await;
     }
-}
-#[cfg(feature="framing")]
-impl TcpConnection{
-    pub async fn send_frame(&mut self, data: &[u8]) -> Result<(), ConnectionError> {
-        if let Some(ref mut stream) = self.stream {
-            let peer = stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_default();
 
-            // Write length header
-            let length = (data.len() as u32).to_be_bytes();
-            if let Err(e) = stream.write_all(&length).await {
-                self.publish_conn_event(ConnectionEvent::Error {
-                    peer: peer.clone(),
-                    error: e.to_string(),
-                })
-                .await;
-                return Err(ConnectionError::SendFailed(e.to_string()));
-            }
 
-            // Write data
-            if let Err(e) = stream.write_all(data).await {
-                self.publish_conn_event(ConnectionEvent::Error {
-                    peer: peer.clone(),
-                    error: e.to_string(),
-                })
-                .await;
-                return Err(ConnectionError::SendFailed(e.to_string()));
-            }
-
-            self.publish_tcp_event(TcpEvent::DataSent {
-                peer,
-                data: data.to_vec(),
-            })
-            .await;
-
-            Ok(())
-        } else {
-            Err(ConnectionError::SendFailed("No active connection".to_string()))
-        }
+    #[cfg(feature = "secureconnection")]
+    pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, ConnectionError> {
+        self.secure_module
+            .encrypt(plaintext)
+            .map_err(|e| ConnectionError::Generic(e))
     }
 
-        pub async fn receive_frame(&mut self) -> Result<Vec<u8>, ConnectionError> {
-        if let Some(ref mut stream) = self.stream {
-            let peer = stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_default();
-
-            // Read length header
-            let mut length_buf = [0u8; 4];
-            if let Err(e) = stream.read_exact(&mut length_buf).await {
-                self.publish_conn_event(ConnectionEvent::Error {
-                    peer: peer.clone(),
-                    error: e.to_string(),
-                })
-                .await;
-                return Err(ConnectionError::ReceiveFailed(e.to_string()));
-            }
-
-            let length = u32::from_be_bytes(length_buf) as usize;
-
-            // Read payload
-            let mut payload = vec![0u8; length];
-            if let Err(e) = stream.read_exact(&mut payload).await {
-                self.publish_conn_event(ConnectionEvent::Error {
-                    peer: peer.clone(),
-                    error: e.to_string(),
-                })
-                .await;
-                return Err(ConnectionError::ReceiveFailed(e.to_string()));
-            }
-
-            self.publish_tcp_event(TcpEvent::DataReceived {
-                peer,
-                data: payload.clone(),
-            })
-            .await;
-
-            Ok(payload)
-        } else {
-            Err(ConnectionError::ReceiveFailed("No active connection".to_string()))
-        }
+    #[cfg(feature = "secureconnection")]
+    pub fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, ConnectionError> {
+        self.secure_module
+            .decrypt(ciphertext)
+            .map_err(|e| ConnectionError::Generic(e))
+    }
+}
+#[cfg(feature = "secureconnection")]
+impl TcpConnection {
+    pub async fn perform_handshake(
+        &mut self,
+        stream: &mut TcpStream,
+        local_keypair: KyberKeyPair,
+        peer_public_key: Option<KyberKeyPair>,
+        is_client: bool,
+    ) -> Result<(), ConnectionError> {
+        self.secure_module
+            .perform_handshake(stream, local_keypair, peer_public_key, is_client)
+            .await
     }
 }
 
@@ -126,14 +184,7 @@ impl Connection for TcpConnection {
                 self.publish_conn_event(ConnectionEvent::Connected { peer: addr.to_string() }).await;
                 Ok(())
             }
-            Err(e) => {
-                self.publish_conn_event(ConnectionEvent::Error {
-                    peer: addr.to_string(),
-                    error: e.to_string(),
-                })
-                .await;
-                Err(ConnectionError::ConnectionFailed(e.to_string()))
-            }
+            Err(e) => Err(ConnectionError::ConnectionFailed(e.to_string())),
         }
     }
 
@@ -147,69 +198,27 @@ impl Connection for TcpConnection {
 
     async fn send(&mut self, data: &[u8]) -> Result<(), Self::Error> {
         if let Some(ref mut stream) = self.stream {
-            // Clone the peer address to avoid conflicts
-            let peer = stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_default();
-    
-            // Attempt to write data
-            if let Err(e) = stream.write_all(data).await {
-                self.publish_conn_event(ConnectionEvent::Error {
-                    peer: peer.clone(),
-                    error: e.to_string(),
-                })
-                .await;
-                return Err(ConnectionError::SendFailed(e.to_string()));
-            }
-    
-            // Publish the data sent event
-            self.publish_tcp_event(TcpEvent::DataSent {
-                peer,
-                data: data.to_vec(),
-            })
-            .await;
-    
-            Ok(())
+            stream.write_all(data).await.map_err(|e| ConnectionError::SendFailed(e.to_string()))
         } else {
             Err(ConnectionError::SendFailed("No active connection".to_string()))
         }
     }
 
     async fn receive(&mut self) -> Result<Vec<u8>, Self::Error> {
-        let mut buf = vec![0u8; 1024];
         if let Some(ref mut stream) = self.stream {
-            // Clone peer address to avoid conflicting borrows
-            let peer = stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_default();
-    
-            // Attempt to read data
-            let n = match stream.read(&mut buf).await {
-                Ok(n) => n,
-                Err(e) => {
-                    self.publish_conn_event(ConnectionEvent::Error {
-                        peer: peer.clone(),
-                        error: e.to_string(),
-                    })
-                    .await;
-                    return Err(ConnectionError::ReceiveFailed(e.to_string()));
-                }
-            };
-    
-            buf.truncate(n);
-    
-            // Publish the data received event
-            self.publish_tcp_event(TcpEvent::DataReceived {
-                peer,
-                data: buf.clone(),
-            })
-            .await;
-    
-            Ok(buf)
+            let mut buffer = vec![0u8; 1024];
+            stream.read_exact(&mut buffer).await.map_err(|e| ConnectionError::ReceiveFailed(e.to_string()))?;
+            Ok(buffer)
         } else {
             Err(ConnectionError::ReceiveFailed("No active connection".to_string()))
         }
     }
+
     fn is_connected(&self) -> bool {
         self.stream.is_some()
     }
 }
+
 
 #[derive(Clone)]
 pub struct TcpTransport {
@@ -265,16 +274,28 @@ pub struct TcpTransportListener {
 #[async_trait]
 impl TransportListener<TcpConnection, ConnectionError> for TcpTransportListener {
     async fn accept(&mut self) -> Result<TcpConnection, ConnectionError> {
-        let (_stream, _) = self.listener.accept().await.map_err(|e| {
+        let (mut stream, addr) = self.listener.accept().await.map_err(|e| {
             ConnectionError::ConnectionFailed(format!("Failed to accept connection: {}", e))
         })?;
-        Ok(TcpConnection::new(
+
+        // Notify that a connection has been established
+        self.conn_event_bus.publish(ConnectionEvent::Connected { peer: addr.to_string() }).await;
+
+        // Set up a new connection
+        let mut connection = TcpConnection::new(
             Arc::clone(&self.conn_event_bus),
             Arc::clone(&self.tcp_event_bus),
-        ))
+        );
+        connection.stream = Some(stream);
+        Ok(connection)
     }
 }
 
 
-
-
+impl TcpTransportListener {
+    pub fn local_addr(&self) -> Result<std::net::SocketAddr, ConnectionError> {
+        self.listener.local_addr().map_err(|e|{
+            ConnectionError::Generic(("Error getting Local Address").to_string())
+        })
+    }
+}
