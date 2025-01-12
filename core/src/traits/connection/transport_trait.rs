@@ -1,6 +1,5 @@
 // core\src\traits\connection\transport_trait.rs
 use async_trait::async_trait;
-
 #[async_trait]
 pub trait Transport: Send + Sync {
     type Connection: Send + Sync;
@@ -18,8 +17,4 @@ pub trait Transport: Send + Sync {
 pub trait TransportListener<C, E>: Send + Sync {
     /// Accept the next inbound connection.
     async fn accept(&mut self) -> Result<C, E>;
-}
-
-pub trait Middleware<C>: Send + Sync {
-    fn wrap_connection(&self, connection: C) -> C;
 }
