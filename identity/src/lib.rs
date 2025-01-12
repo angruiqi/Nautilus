@@ -13,6 +13,10 @@ mod pki_error;
 mod pki;
 // Module contains the trait for Key Exchange Mechanism
 mod key_exchange;
+// Ciphersuite For Defining the Supported Ciphers
+mod cipher_suite;
+// Modue containing the Trait for Key Serialization
+mod key_serde_trait;
 /// # Overview
 /// This library is designed to facilitate cryptographic operations for
 /// secure communication and data integrity. By using standardized algorithms
@@ -28,7 +32,11 @@ mod key_exchange;
 pub use pki_trait::PKITraits;
 // Publicly export the `PKIError` enum for error handling by external modules.
 pub use pki_error::PKIError;
-// Publicly export all contents of the `pki` module for external use.
-pub use pki::*;
 // Publicly export the `KeyExchange` trait for use by external Modules
 pub use key_exchange::KeyExchange;
+// CipherSuite Supported By Crate
+pub use cipher_suite::CipherSuite;
+// Publicly export the `KeySerialization`trait for use by external Module
+pub use key_serde_trait::KeySerialization;
+// Publicly export all contents of the `pki` module for external use.
+pub use pki::*;

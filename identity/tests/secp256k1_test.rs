@@ -286,3 +286,28 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("Invalid public key format"));
     }
 }
+
+
+#[cfg(feature = "secp256k1")]
+#[cfg(test)]
+mod serialization_test {
+    use identity::{SECP256K1KeyPair,PKITraits,KeySerialization};
+
+    #[test]
+    fn test_serialization_and_deserialization() {
+        let key_pair = SECP256K1KeyPair::generate_key_pair().expect("Failed to generate key pair");
+        let serialized = key_pair.to_bytes();
+
+        let deserialized = SECP256K1KeyPair::from_bytes(&serialized).expect("Failed to deserialize key pair");
+
+        assert_eq!(key_pair.signing_key.to_bytes().to_vec(), deserialized.signing_key.to_bytes().to_vec());
+        assert_eq!(key_pair.verifying_key.to_encoded_point(false).as_bytes().to_vec(), deserialized.verifying_key.to_encoded_point(false).as_bytes().to_vec());
+    }
+
+    #[test]
+    fn test_invalid_deserialization() {
+        let invalid_bytes = vec![0u8; 16];
+        let result = SECP256K1KeyPair::from_bytes(&invalid_bytes);
+        assert!(result.is_err());
+    }
+}

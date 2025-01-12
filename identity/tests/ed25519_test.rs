@@ -217,3 +217,47 @@ mod tests {
         assert!(is_valid);
     }
 }
+
+
+
+#[cfg(test)]
+#[cfg(feature = "ed25519")]
+mod serialization_tests {
+    use identity::{Ed25519KeyPair,PKITraits,KeySerialization};
+    #[test]
+    fn test_serialization_and_deserialization() {
+        let key_pair = Ed25519KeyPair::generate_key_pair().expect("Failed to generate key pair");
+        let serialized = key_pair.to_bytes();
+
+        let deserialized = Ed25519KeyPair::from_bytes(&serialized).expect("Failed to deserialize key pair");
+
+        assert_eq!(key_pair.signing_key.to_bytes(), deserialized.signing_key.to_bytes());
+        assert_eq!(key_pair.verifying_key.to_bytes(), deserialized.verifying_key.to_bytes());
+    }
+
+    #[test]
+    fn test_invalid_deserialization() {
+        let invalid_bytes = vec![0u8; 16];
+        let result = Ed25519KeyPair::from_bytes(&invalid_bytes);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_partial_key_serialization() {
+        let key_pair = Ed25519KeyPair::generate_key_pair().expect("Failed to generate key pair");
+        let serialized = key_pair.to_bytes();
+
+        let partial_serialized = &serialized[..serialized.len() - 10]; // Simulate incomplete data
+        let result = Ed25519KeyPair::from_bytes(partial_serialized);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_key_consistency_after_serialization() {
+        let key_pair = Ed25519KeyPair::generate_key_pair().expect("Failed to generate key pair");
+        let serialized = key_pair.to_bytes();
+        let deserialized = Ed25519KeyPair::from_bytes(&serialized).expect("Failed to deserialize key pair");
+
+        assert_eq!(key_pair.get_public_key_raw_bytes(), deserialized.get_public_key_raw_bytes());
+    }
+}

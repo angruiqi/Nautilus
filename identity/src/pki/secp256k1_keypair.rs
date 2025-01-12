@@ -1,6 +1,8 @@
+// ======================= Public Key Infrastructure (PKI) =======================
 // identity\src\pki\secp256k1_keypair.rs
+
 #[cfg(feature = "secp256k1")]
-use crate::{PKIError, PKITraits};
+use crate::{PKIError, PKITraits, KeyExchange};
 #[cfg(feature = "secp256k1")]
 use k256::ecdsa::{
     signature::{Signer, Verifier},
@@ -9,15 +11,16 @@ use k256::ecdsa::{
 #[cfg(feature = "secp256k1")]
 use rand_core::OsRng;
 #[cfg(feature = "secp256k1")]
-use crate::KeyExchange;
-#[cfg(feature = "secp256k1")]
 use k256::elliptic_curve::sec1::ToEncodedPoint;
+
+// ======================= SECP256K1 Key Pair Definition =======================
 #[cfg(feature = "secp256k1")]
 pub struct SECP256K1KeyPair {
     pub signing_key: SigningKey,
     pub verifying_key: VerifyingKey,
 }
 
+// ======================= PKITraits Implementation =======================
 #[cfg(feature = "secp256k1")]
 impl PKITraits for SECP256K1KeyPair {
     type KeyPair = Self;
@@ -53,13 +56,16 @@ impl PKITraits for SECP256K1KeyPair {
     /// Retrieves the public key from the key pair.
     fn get_public_key_raw_bytes(&self) -> Vec<u8> {
         // Get the public key in uncompressed format (0x04 indicates uncompressed)
-        self.verifying_key.to_encoded_point(false).as_bytes().to_vec() // Convert array to Vec<u8>
+        self.verifying_key.to_encoded_point(false).as_bytes().to_vec()
     }
+
     /// Retrieves the key type.
     fn key_type() -> String {
         "SECP256K1".to_string()
     }
 }
+
+// ======================= Key Exchange Implementation =======================
 #[cfg(feature = "secp256k1")]
 impl KeyExchange for SECP256K1KeyPair {
     type SharedSecretKey = Vec<u8>;
@@ -111,5 +117,34 @@ impl KeyExchange for SECP256K1KeyPair {
     /// Retrieve the key exchange type
     fn key_exchange_type() -> String {
         "SECP256K1-ECDH".to_string()
+    }
+}
+// ======================= Key Serialization Implmentation =======================
+#[cfg(feature = "secp256k1")]
+impl crate::KeySerialization for SECP256K1KeyPair {
+    fn to_bytes(&self) -> Vec<u8> {
+        let signing_key_bytes = self.signing_key.to_bytes().to_vec();
+        let verifying_key_bytes = self.verifying_key.to_encoded_point(false).as_bytes().to_vec();
+
+        [signing_key_bytes, verifying_key_bytes].concat()
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Result<Self, PKIError> {
+        let signing_key_size = 32; // SECP256K1 private key size
+        if bytes.len() <= signing_key_size {
+            return Err(PKIError::InvalidKey("Insufficient data for deserialization".to_string()));
+        }
+
+        let (signing_key_bytes, verifying_key_bytes) = bytes.split_at(signing_key_size);
+
+        let signing_key = SigningKey::from_bytes(signing_key_bytes.into())
+            .map_err(|_| PKIError::InvalidKey("Invalid SECP256K1 private key".to_string()))?;
+        let verifying_key = VerifyingKey::from_sec1_bytes(verifying_key_bytes)
+            .map_err(|_| PKIError::InvalidKey("Invalid SECP256K1 public key".to_string()))?;
+
+        Ok(Self {
+            signing_key,
+            verifying_key,
+        })
     }
 }

@@ -1,11 +1,16 @@
+#[cfg(feature = "aes")]
 use std::io::{BufWriter, Write};
+#[cfg(feature = "aes")]
 use std::net::TcpStream;
-use data_encryption::{AesGcmEncryption, AesKeySize, StreamEncryption};
-
+#[cfg(feature = "aes")]
+use data_encryption::{Aes256GcmEncryption,StreamEncryption};
+#[cfg(feature = "aes")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = vec![0u8; 16]; // AES-128 key
     let nonce = vec![0u8; 12];
-    let aes = AesGcmEncryption::new(AesKeySize::Aes128, key.clone(), nonce.clone())?;
+    let aes = Aes256GcmEncryption::new(key.clone(), nonce.clone())
+    .expect("Failed to create AES-256 GCM instance");
+
 
     // Connect to the target server (127.0.0.1 on port 8081)
     let stream = TcpStream::connect("127.0.0.1:8081")?;
@@ -23,4 +28,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     writer.flush()?; // Ensure all data is written
     Ok(())
+}
+#[cfg(not(feature = "aes"))]
+fn main() {
+    println!("Enable Aes Feature");
 }

@@ -551,3 +551,28 @@ mod attack_tests {
             "Processing times for valid and invalid ciphertexts should not differ significantly.");
     }
 }
+
+#[cfg(feature = "pki_rsa")]
+#[cfg(test)]
+mod serialization_test {
+    use identity::{RSAkeyPair,PKITraits,KeySerialization};
+    use rsa::pkcs1::{EncodeRsaPrivateKey,EncodeRsaPublicKey};
+
+    #[test]
+    fn test_serialization_and_deserialization() {
+        let key_pair = RSAkeyPair::generate_key_pair().expect("Failed to generate key pair");
+        let serialized = key_pair.to_bytes();
+
+        let deserialized = RSAkeyPair::from_bytes(&serialized).expect("Failed to deserialize key pair");
+
+        assert_eq!(key_pair.private_key.to_pkcs1_der().unwrap().as_bytes(), deserialized.private_key.to_pkcs1_der().unwrap().as_bytes());
+        assert_eq!(key_pair.public_key.to_pkcs1_der().unwrap().as_bytes(), deserialized.public_key.to_pkcs1_der().unwrap().as_bytes());
+    }
+
+    #[test]
+    fn test_invalid_deserialization() {
+        let invalid_bytes = vec![0u8; 512];
+        let result = RSAkeyPair::from_bytes(&invalid_bytes);
+        assert!(result.is_err());
+    }
+}

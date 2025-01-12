@@ -1,16 +1,21 @@
+// ======================= Public Key Infrastructure (PKI) =======================
 // identity\src\pki\spincs_keypair.rs
+
 #[cfg(feature = "spincs")]
-use crate::{PKIError, PKITraits}; 
+use crate::{PKIError, PKITraits};
 #[cfg(feature = "spincs")]
 use fips205::slh_dsa_shake_256s::{self, PrivateKey, PublicKey};
 #[cfg(feature = "spincs")]
 use fips205::traits::{SerDes, Signer, Verifier};
 
+// ======================= SPHINCS+ Key Pair Definition =======================
 #[cfg(feature = "spincs")]
 pub struct SPHINCSKeyPair {
-  pub private_key: PrivateKey,
-  pub public_key: PublicKey,
+    pub private_key: PrivateKey,
+    pub public_key: PublicKey,
 }
+
+// ======================= PKITraits Implementation =======================
 #[cfg(feature = "spincs")]
 impl PKITraits for SPHINCSKeyPair {
     type KeyPair = Self;
@@ -57,3 +62,6 @@ impl PKITraits for SPHINCSKeyPair {
         "SPHINCS+".to_string()
     }
 }
+
+// ======================= Future Enhancements =======================
+// Additional features such as key serialization and deserialization can be implemented here if required.

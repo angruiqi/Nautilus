@@ -22,6 +22,6 @@ pub use key_derive::*;
 
 
 // ================================================ Misc. && Utilities API Interface ===========================================
-mod utils; // utility Services are both private/public
+pub mod utils; // utility Services are both private/public
 
 // =============================================================== FIN =========================================================

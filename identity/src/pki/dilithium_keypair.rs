@@ -1,4 +1,6 @@
+// ======================= Public Key Infrastructure (PKI) =======================
 // identity\src\pki\dilithium_keypair.rs
+
 #[cfg(feature = "dilithium")]
 use crate::{PKIError, PKITraits};
 #[cfg(feature = "dilithium")]
@@ -6,8 +8,7 @@ use fips204::ml_dsa_87::{self, PrivateKey, PublicKey};
 #[cfg(feature = "dilithium")]
 use fips204::traits::{SerDes, Signer, Verifier};
 
-// ==================================================== Structs =====================================================
-
+// ======================= Dilithium Key Pair Definition =======================
 /// A struct representing a Dilithium key pair.
 ///
 /// This struct encapsulates the private and public keys required for
@@ -20,24 +21,13 @@ pub struct DilithiumKeyPair {
     pub public_key: PublicKey,
 }
 
-// ==================================================== Implementations ==============================================
-/// Implementation of the `PKITraits` trait for `DilithiumKeyPair`.
-///
-/// This provides standard cryptographic operations such as key generation,
-/// signing, verification, and retrieval of public key bytes.
+// ======================= PKITraits Implementation =======================
 #[cfg(feature = "dilithium")]
 impl PKITraits for DilithiumKeyPair {
     type KeyPair = Self;
     type Error = PKIError;
 
     /// Generates a new Dilithium key pair.
-    ///
-    /// This method uses `ml_dsa_87::try_keygen()` to generate a private-public
-    /// key pair. If a stack overflow occurs, it provides guidance on increasing
-    /// stack size or running in a thread with more memory.
-    ///
-    /// # Errors
-    /// Returns `PKIError::KeyPairGenerationError` if the key generation fails.
     fn generate_key_pair() -> Result<Self::KeyPair, Self::Error> {
         let result = std::panic::catch_unwind(|| {
             ml_dsa_87::try_keygen()
@@ -69,15 +59,6 @@ impl PKITraits for DilithiumKeyPair {
     }
 
     /// Signs data using the private key.
-    ///
-    /// This method takes raw data and signs it using the private key.
-    /// The resulting signature is returned as a `Vec<u8>`.
-    ///
-    /// # Arguments
-    /// - `data`: The data to be signed.
-    ///
-    /// # Errors
-    /// Returns `PKIError::SigningError` if the signing operation fails.
     fn sign(&self, data: &[u8]) -> Result<Vec<u8>, Self::Error> {
         let signature = self
             .private_key
@@ -87,17 +68,6 @@ impl PKITraits for DilithiumKeyPair {
     }
 
     /// Verifies a signature using the public key.
-    ///
-    /// This method checks the validity of a given signature for the provided
-    /// data using the public key.
-    ///
-    /// # Arguments
-    /// - `data`: The original data to verify against.
-    /// - `signature`: The signature to be validated.
-    ///
-    /// # Errors
-    /// Returns `PKIError::VerificationError` if the signature length is invalid
-    /// or verification fails.
     fn verify(&self, data: &[u8], signature: &[u8]) -> Result<bool, Self::Error> {
         let signature_array: [u8; 4627] = signature
             .try_into()
@@ -108,17 +78,53 @@ impl PKITraits for DilithiumKeyPair {
     }
 
     /// Retrieves the public key as raw bytes.
-    ///
-    /// This method converts the public key into a `Vec<u8>` format suitable for
-    /// storage or transmission.
     fn get_public_key_raw_bytes(&self) -> Vec<u8> {
         self.public_key.clone().into_bytes().to_vec()
     }
 
     /// Retrieves the key type as a string.
-    ///
-    /// Returns the type of key pair, e.g., "Dilithium".
     fn key_type() -> String {
         "Dilithium".to_string()
+    }
+}
+
+// ======================= Key Serialization Implementation =======================
+#[cfg(feature = "dilithium")]
+impl crate::KeySerialization for DilithiumKeyPair {
+    fn to_bytes(&self) -> Vec<u8> {
+        let public_key_bytes = self.public_key.clone().into_bytes().to_vec();
+        let private_key_bytes = self.private_key.clone().into_bytes().to_vec();
+
+        [public_key_bytes, private_key_bytes].concat()
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Result<Self, PKIError> {
+        let public_key_len = 2592; // Confirmed from PublicKey::into_bytes()
+        let private_key_len = 4896; // Confirmed from PrivateKey::into_bytes()
+    
+        if bytes.len() != public_key_len + private_key_len {
+            return Err(PKIError::InvalidKey(format!(
+                "Invalid key length for Dilithium. Expected {}, got {}",
+                public_key_len + private_key_len,
+                bytes.len()
+            )));
+        }
+    
+        let (public_key_bytes, private_key_bytes) = bytes.split_at(public_key_len);
+    
+        let public_key = PublicKey::try_from_bytes(public_key_bytes.try_into().map_err(|_| {
+            PKIError::InvalidKey("Invalid public key length".to_string())
+        })?)
+        .map_err(|_| PKIError::InvalidKey("Invalid Dilithium public key".to_string()))?;
+    
+        let private_key = PrivateKey::try_from_bytes(private_key_bytes.try_into().map_err(|_| {
+            PKIError::InvalidKey("Invalid private key length".to_string())
+        })?)
+        .map_err(|_| PKIError::InvalidKey("Invalid Dilithium private key".to_string()))?;
+    
+        Ok(Self {
+            public_key,
+            private_key,
+        })
     }
 }

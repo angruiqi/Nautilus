@@ -1,47 +1,23 @@
+// ======================= Public Key Infrastructure (PKI) =======================
 // identity\src\pki\kyber_keypair.rs
+
 use crate::pki_error::PKIError;
-use crate::KeyExchange;
+use crate::{KeyExchange, PKITraits};
 #[cfg(feature = "kyber")]
-use fips203::ml_kem_1024::{EncapsKey, DecapsKey, KG};
+use fips203::ml_kem_1024::{EncapsKey, DecapsKey, KG, CipherText};
 #[cfg(feature = "kyber")]
-use fips203::traits::{Decaps, Encaps, SerDes, KeyGen};
-#[cfg(feature = "kyber")]
-use crate::PKITraits;
+use fips203::traits::{SerDes, KeyGen, Decaps, Encaps};
 #[cfg(feature = "kyber")]
 use sha2::{Sha256, Digest};
-#[cfg(feature = "kyber")]
-use fips203::ml_kem_1024::CipherText;
-use serde::{Serialize, Deserialize};
-use serde_bytes::{ByteBuf};
 
-
+// ======================= Kyber Key Pair Definition =======================
 /// Represents a Kyber key pair.
-#[derive(Serialize, Deserialize)]
 pub struct KyberKeyPair {
-    #[serde(with = "serde_bytes")]
-    pub public_key: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    pub private_key: Vec<u8>,
+    pub public_key: EncapsKey,
+    pub private_key: DecapsKey,
 }
 
-impl KyberKeyPair {
-    // Helper function to convert to fips203 EncapsKey
-    fn get_encaps_key(&self) -> Result<EncapsKey, PKIError> {
-        EncapsKey::try_from_bytes(self.public_key.clone().try_into().map_err(|_| {
-            PKIError::InvalidKey("Failed to convert public key bytes".to_string())
-        })?)
-        .map_err(|_| PKIError::InvalidKey("Invalid public key format".to_string()))
-    }
-
-    // Helper function to convert to fips203 DecapsKey
-    fn get_decaps_key(&self) -> Result<DecapsKey, PKIError> {
-        DecapsKey::try_from_bytes(self.private_key.clone().try_into().map_err(|_| {
-            PKIError::InvalidKey("Failed to convert private key bytes".to_string())
-        })?)
-        .map_err(|_| PKIError::InvalidKey("Invalid private key format".to_string()))
-    }
-}
-
+// ======================= PKITraits Implementation =======================
 impl PKITraits for KyberKeyPair {
     type KeyPair = KyberKeyPair;
     type Error = PKIError;
@@ -51,20 +27,19 @@ impl PKITraits for KyberKeyPair {
             PKIError::KeyPairGenerationError(format!("Key generation failed: {:?}", e))
         })?;
         Ok(KyberKeyPair {
-            public_key: public_key.into_bytes().to_vec(),
-            private_key: private_key.into_bytes().to_vec(),
+            public_key,
+            private_key,
         })
     }
 
     fn get_public_key_raw_bytes(&self) -> Vec<u8> {
-        self.public_key.clone()
+        self.public_key.clone().into_bytes().to_vec()
     }
 
     fn key_type() -> String {
         "Kyber".to_string()
     }
 
-    // For now, signing and verification can be placeholders or `unimplemented!()` if not required.
     fn sign(&self, _data: &[u8]) -> Result<Vec<u8>, Self::Error> {
         Err(PKIError::UnsupportedOperation("Kyber does not support signing".to_string()))
     }
@@ -74,14 +49,14 @@ impl PKITraits for KyberKeyPair {
     }
 }
 
-
-impl KeyExchange for KyberKeyPair{
+// ======================= Key Exchange Implementation =======================
+impl KeyExchange for KyberKeyPair {
     type SharedSecretKey = Vec<u8>;
-    type PublicKey = Vec<u8>;
-    type PrivateKey = Vec<u8>;
+    type PublicKey = EncapsKey;
+    type PrivateKey = DecapsKey;
     type Error = PKIError;
 
-   fn encapsulate(
+    fn encapsulate(
         public_key: &Self::PublicKey,
         context: Option<&[u8]>,
     ) -> Result<(Self::SharedSecretKey, Vec<u8>), Self::Error> {
@@ -89,29 +64,22 @@ impl KeyExchange for KyberKeyPair{
             println!("Context provided: {:?}", ctx);
         }
 
-        let encaps_key = EncapsKey::try_from_bytes(public_key.clone().try_into().map_err(|_| {
-            PKIError::InvalidKey("Failed to convert public key bytes".to_string())
-        })?)
-        .map_err(|_| PKIError::InvalidKey("Invalid public key format".to_string()))?;
-
-        let (shared_secret, ciphertext) = encaps_key
+        let (shared_secret, ciphertext) = public_key
             .try_encaps()
             .map_err(|e| PKIError::KeyExchangeError(format!("Encapsulation failed: {}", e)))?;
 
-        // Create a validation tag by hashing the shared secret and ciphertext
         let mut hasher = Sha256::new();
-        hasher.update(&shared_secret.clone().into_bytes()); // Clone shared_secret
-        hasher.update(&ciphertext.clone().into_bytes()); // Clone ciphertext
+        hasher.update(&shared_secret.clone().into_bytes());
+        hasher.update(&ciphertext.clone().into_bytes());
         let validation_tag = hasher.finalize();
 
-        // Append the validation tag to the ciphertext
         let mut ciphertext_vec = ciphertext.into_bytes().to_vec();
         ciphertext_vec.extend_from_slice(&validation_tag);
 
         Ok((shared_secret.into_bytes().to_vec(), ciphertext_vec))
     }
 
-   fn decapsulate(
+    fn decapsulate(
         private_key: &Self::PrivateKey,
         ciphertext: &[u8],
         context: Option<&[u8]>,
@@ -120,37 +88,28 @@ impl KeyExchange for KyberKeyPair{
             println!("Context provided: {:?}", ctx);
         }
 
-        let decaps_key = DecapsKey::try_from_bytes(private_key.clone().try_into().map_err(|_| {
-            PKIError::InvalidKey("Failed to convert private key bytes".to_string())
-        })?)
-        .map_err(|_| PKIError::InvalidKey("Invalid private key format".to_string()))?;
-
         let tag_length = Sha256::output_size();
         if ciphertext.len() < 1568 + tag_length {
             return Err(PKIError::KeyExchangeError("Invalid ciphertext length".to_string()));
         }
 
-        // Separate the original ciphertext and the validation tag
         let (ciphertext_part, validation_tag) = ciphertext.split_at(1568);
 
-        // Convert the ciphertext part back to CipherText format
         let ciphertext_array: [u8; 1568] = ciphertext_part.try_into().map_err(|_| {
             PKIError::KeyExchangeError("Failed to convert ciphertext to fixed-size array".to_string())
         })?;
         let ciphertext = CipherText::try_from_bytes(ciphertext_array)
             .map_err(|_| PKIError::KeyExchangeError("Invalid ciphertext format".to_string()))?;
 
-        let shared_secret = decaps_key
+        let shared_secret = private_key
             .try_decaps(&ciphertext)
             .map_err(|e| PKIError::KeyExchangeError(format!("Decapsulation failed: {}", e)))?;
 
-        // Recompute the validation tag
         let mut hasher = Sha256::new();
         hasher.update(&shared_secret.clone().into_bytes());
         hasher.update(&ciphertext.into_bytes());
         let expected_tag = hasher.finalize();
 
-        // Validate the tag
         if validation_tag != expected_tag.as_slice() {
             return Err(PKIError::KeyExchangeError("Validation tag mismatch".to_string()));
         }
@@ -160,5 +119,45 @@ impl KeyExchange for KyberKeyPair{
 
     fn key_exchange_type() -> String {
         "Kyber".to_string()
+    }
+}
+// ======================= Key Serialization Implmentation =======================
+impl crate::KeySerialization for KyberKeyPair {
+    fn to_bytes(&self) -> Vec<u8> {
+        let public_key_bytes = self.public_key.clone().into_bytes().to_vec();
+        let private_key_bytes = self.private_key.clone().into_bytes().to_vec();
+
+        [public_key_bytes, private_key_bytes].concat()
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Result<Self, PKIError> {
+        let key_len = 1568; // Length of the public key in bytes
+        if bytes.len() < 2 * key_len {
+            return Err(PKIError::InvalidKey("Insufficient data for deserialization".to_string()));
+        }
+
+        let (public_key_bytes, private_key_bytes) = bytes.split_at(key_len);
+
+        let public_key = EncapsKey::try_from_bytes(public_key_bytes.try_into().map_err(|_| {
+            PKIError::InvalidKey("Invalid public key length".to_string())
+        })?)
+        .map_err(|_| PKIError::InvalidKey("Invalid Kyber public key".to_string()))?;
+
+        let private_key = DecapsKey::try_from_bytes(private_key_bytes.try_into().map_err(|_| {
+            PKIError::InvalidKey("Invalid private key length".to_string())
+        })?)
+        .map_err(|_| PKIError::InvalidKey("Invalid Kyber private key".to_string()))?;
+
+        Ok(Self {
+            public_key,
+            private_key,
+        })
+    }
+}
+
+// ========================= Custom Implmentations ===================================
+impl KyberKeyPair {
+    pub fn get_private_key(&self) -> &DecapsKey {
+        &self.private_key
     }
 }
