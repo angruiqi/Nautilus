@@ -1,0 +1,16 @@
+[package]
+name = "authentication"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hmac = "0.12"
+sha2 = "0.10"
+cmac = "0.7"
+aes = "0.8"
+
+
+[features]
+default = ["hmac", "cmac"]
+hmac = []
+cmac = []
