@@ -11,6 +11,7 @@ use std::io::{Read, Write};
 
 // ========================= BlowfishEncryption Struct =========================
 #[cfg(feature = "blwfish")]
+#[derive(Clone,Debug)]
 pub struct BlowfishEncryption {
     cipher: Blowfish,
 }

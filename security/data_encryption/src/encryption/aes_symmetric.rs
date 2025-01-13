@@ -123,3 +123,20 @@ impl StreamEncryption for Aes256GcmEncryption {
 }
 
 // ============================================================================
+impl Aes256GcmEncryption {
+    // Encrypt the given plaintext using the provided session key
+    pub fn encrypt_with_key(&self, plaintext: &[u8], session_key: &[u8]) -> Result<Vec<u8>, String> {
+        // Use the provided session key for encryption
+        let cipher = Aes256Gcm::new_from_slice(session_key).map_err(|e| e.to_string())?;
+        let nonce = Nonce::from_slice(&self.nonce);
+        cipher.encrypt(nonce, plaintext).map_err(|e| e.to_string())
+    }
+
+    // Decrypt the given ciphertext using the provided session key
+    pub fn decrypt_with_key(&self, ciphertext: &[u8], session_key: &[u8]) -> Result<Vec<u8>, String> {
+        // Use the provided session key for decryption
+        let cipher = Aes256Gcm::new_from_slice(session_key).map_err(|e| e.to_string())?;
+        let nonce = Nonce::from_slice(&self.nonce);
+        cipher.decrypt(nonce, ciphertext).map_err(|e| e.to_string())
+    }
+}

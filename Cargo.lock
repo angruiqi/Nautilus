@@ -605,6 +605,7 @@ dependencies = [
  "scrypt",
  "sha2",
  "tempfile",
+ "thiserror 2.0.11",
  "tokio",
  "zeroize",
 ]
@@ -1026,6 +1027,13 @@ checksum = "6dd08c532ae367adf81c312a4580bc67f1d0fe8bc9c460520283f4c0ff277888"
 dependencies = [
  "cfg-if",
  "crunchy",
+]
+
+[[package]]
+name = "handshake"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -2365,6 +2373,21 @@ checksum = "be4d6b5f19ff7664e8c98d03e2139cb510db9b0a60b55f8e8709b689d939b6bc"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "tls"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "data_encryption",
+ "fips203",
+ "handshake",
+ "identity",
+ "nautilus_core",
+ "tcp",
+ "thiserror 2.0.11",
+ "tokio",
 ]
 
 [[package]]

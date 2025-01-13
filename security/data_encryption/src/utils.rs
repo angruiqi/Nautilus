@@ -1,3 +1,4 @@
+// security\data_encryption\src\utils.rs
 use rand_core::{OsRng, RngCore};
 
 /// Generate a secure random salt of the specified length.

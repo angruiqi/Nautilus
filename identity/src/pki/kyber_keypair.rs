@@ -12,6 +12,7 @@ use sha2::{Sha256, Digest};
 
 // ======================= Kyber Key Pair Definition =======================
 /// Represents a Kyber key pair.
+
 pub struct KyberKeyPair {
     pub public_key: EncapsKey,
     pub private_key: DecapsKey,
@@ -159,5 +160,17 @@ impl crate::KeySerialization for KyberKeyPair {
 impl KyberKeyPair {
     pub fn get_private_key(&self) -> &DecapsKey {
         &self.private_key
+    }
+}
+use std::fmt;
+
+impl fmt::Debug for KyberKeyPair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "KyberKeyPair {{ public_key: {:?}, private_key: {:?} }}",
+            &self.public_key.clone().into_bytes(), // Convert the EncapsKey to bytes
+            &self.private_key.clone().into_bytes()  // Convert the DecapsKey to bytes
+        )
     }
 }
