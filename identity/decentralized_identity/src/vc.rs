@@ -5,7 +5,7 @@ use chrono::Utc;
 use base64::engine::general_purpose;
 use base64::Engine as _; // For encoding
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug,Clone)]
 pub struct VerifiableCredential {
     pub id: String,
     pub issuer: String,

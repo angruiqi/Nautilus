@@ -1419,9 +1419,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "crc32fast",
- "data_encryption",
  "futures",
- "identity",
  "tokio",
 ]
 
@@ -2230,8 +2228,6 @@ name = "tcp"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "data_encryption",
- "identity",
  "nautilus_core",
  "tokio",
 ]

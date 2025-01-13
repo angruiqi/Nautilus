@@ -1,8 +1,9 @@
 use crate::{DIDDocument, VerifiableCredential, PublicKey, Proof};
-
-#[derive(Debug)]
+use serde::{Serialize,Deserialize};
+use serde_json;
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserDocument {
-    did_document: DIDDocument,
+    pub did_document: DIDDocument,
     credentials: Vec<VerifiableCredential>,
     verifying_key: PublicKey,
 }
@@ -28,6 +29,9 @@ impl UserDocument {
         &self.did_document
     }
 
+    pub fn get_credentials(&self) -> Vec<VerifiableCredential> {
+        self.credentials.clone()
+    }
     pub fn add_proof_to_vc(&mut self, vc_id: &str, proof: Proof) -> Result<(), String> {
         if let Some(vc) = self.credentials.iter_mut().find(|vc| vc.id == vc_id) {
             vc.proof = proof;
@@ -44,4 +48,13 @@ impl UserDocument {
                 vc.id, vc.issuer, vc.subject, vc.proof, vc.credential_subject);
         }
     }
+
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+
+    pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json_str)
+    }
+
 }
