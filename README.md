@@ -59,5 +59,3 @@ Nautilus is licensed under the MIT License.
 ### Contact:
 
 For any questions or suggestions, feel free to open an issue on the repository or reach out to us. We hope Nautilus inspires your journey in decentralized networking! 🌐
-
-jsdjsjs
