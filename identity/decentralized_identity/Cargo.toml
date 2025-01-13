@@ -2,12 +2,20 @@
 name = "decentralized_identity"
 version = "0.1.0"
 edition = "2021"
-
+build = "build.rs"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = {version = "1.0"}
 chrono = {version = "0.4.39"}
 
-identity = {path = "../",features = ["dilithium","falcon","ed25519"]}
+identity = { path = "../", optional = true , default-features = false}
 base64 = "0.22.1"
 uuid = { version = "1.10.0", features = ["v4"] }
+
+[features]
+default = ["rsa"]
+rsa = ["identity/pki_rsa"]
+ecdsa = ["identity/ecdsa"]
+ed25519 = ["identity/ed25519"]
+dilithium = ["identity/dilithium"]
+falcon = ["identity/falcon"]

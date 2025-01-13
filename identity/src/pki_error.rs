@@ -98,7 +98,7 @@ pub enum PKIError {
 /// This implementation ensures that each variant of `PKIError` is formatted
 /// with an appropriate error message, making it clear to users and developers
 /// what the error is and where it occurred.
-impl std::fmt::Display for PKIError {
+impl fmt::Display for PKIError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PKIError::KeyPairGenerationError(msg) => write!(f, "Key pair generation error: {}", msg),

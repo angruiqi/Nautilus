@@ -1,11 +1,16 @@
+#[cfg(feature = "dilithium")]
 use std::thread;
+#[cfg(feature = "dilithium")]
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "dilithium")]
 use decentralized_identity::{
     IdentityFlow, KeyManager, PKIFactory, Algorithm, Proof, UserDocument,
 };
+#[cfg(feature = "dilithium")]
 use base64::Engine;
+#[cfg(feature = "dilithium")]
 use std::collections::HashMap;
-
+#[cfg(feature = "dilithium")]
 fn main() {
     // Initialize a shared KeyManager
     let key_manager = Arc::new(Mutex::new(KeyManager::new()));
@@ -102,4 +107,9 @@ fn main() {
     handle.join().unwrap();
 
     println!("Main thread completed.");
+}
+#[cfg(not(feature = "dilithium"))]
+fn main() {
+    println!("Dilithium feature is not enabled.");
+    println!("Run with the `dilithium` feature to enable the DID document generation and signing process.");
 }
