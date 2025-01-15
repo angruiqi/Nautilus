@@ -19,5 +19,5 @@ members = [
     "utilities/certificate_parser", 
     "protocols/negotiation", 
     "security/authentication", 
-    "protocols/handshake", 
+    "protocols/handshake", "transport/udp", 
     ]
