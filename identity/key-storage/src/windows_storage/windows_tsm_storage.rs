@@ -1,43 +1,52 @@
-//identity\key-storage\src\windows_storage\windows_tsm_storage.rs
+// identity\key-storage\src\windows_storage\windows_tsm_storage.rs
+// ==== Windows TSM (Trusted Security Module) Storage ====
+//
+// This module provides a Windows-specific implementation of the `KeyStorage` trait,
+// utilizing the Windows DPAPI (Data Protection API) for secure encryption and decryption
+// of stored keys. Keys are saved as encrypted files in a specified storage directory.
+//
+// ## Overview
+//
+// - **Backend:** Windows DPAPI for data encryption and decryption.
+// - **Feature Dependency:** Enabled only when the `tsm` feature is specified for Windows targets.
+//
+// ## Key Features
+//
+// - Secure encryption and decryption using DPAPI.
+// - Save, load, and remove keys as encrypted files.
+// - Support for listing stored keys in the directory.
+//
+// ## Limitations
+//
+// - Requires a writable storage directory.
+// - Metadata retrieval is limited and uses JSON-based serialization.
+// - Windows-only; relies on the WinAPI DPAPI for core functionality.
+//
+// ================================================= Windows TSM Storage Imports ====================================================
 use crate::{KeyMetadata, KeyStorage};
-use std::fmt::{Debug, Formatter};
+use std::fmt::{self, Debug, Formatter};
 use std::io::Write;
 use std::path::Path;
 use std::{fs, ptr};
-use std::fmt;
-use winapi::um::dpapi::{
-    CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN,
-};
+use winapi::um::dpapi::{CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN};
 use winapi::um::wincrypt::DATA_BLOB;
+// ================================================= Windows TSM Storage Imports ====================================================
 
+// ================================================= TSMStorage Struct =============================================================
 #[derive(Debug)]
-pub enum TSMStorageError {
-    EncryptionError(String),
-    DecryptionError(String),
-    SerializationError(String),
-    DeserializationError(String),
-    IOError(String),
-    WinapiError(u32),
-}
-
 pub struct TSMStorage {
-    storage_dir: String, // Directory for storing files
-}
-
-impl Debug for TSMStorage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TSMStorage {{ storage_dir: {} }}", self.storage_dir)
-    }
+    storage_dir: String, // Directory for storing encrypted key files
 }
 
 impl TSMStorage {
+    /// Creates a new `TSMStorage` instance with the specified storage directory.
     pub fn new(storage_dir: &str) -> Self {
         Self {
             storage_dir: storage_dir.to_string(),
         }
     }
 
-    /// Encrypt data using Windows DPAPI (CryptProtectData)
+    /// Encrypt data using Windows DPAPI (CryptProtectData).
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, TSMStorageError> {
         let mut in_blob = DATA_BLOB {
             cbData: plaintext.len() as u32,
@@ -70,12 +79,12 @@ impl TSMStorage {
             }
 
             let data = std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec();
-            winapi::um::winbase::LocalFree(out_blob.pbData as _); // Free memory allocated by DPAPI
+            winapi::um::winbase::LocalFree(out_blob.pbData as _); // Free allocated memory
             Ok(data)
         }
     }
 
-    /// Decrypt data using Windows DPAPI (CryptUnprotectData)
+    /// Decrypt data using Windows DPAPI (CryptUnprotectData).
     pub fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, TSMStorageError> {
         let mut in_blob = DATA_BLOB {
             cbData: ciphertext.len() as u32,
@@ -108,16 +117,19 @@ impl TSMStorage {
             }
 
             let data = std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec();
-            winapi::um::winbase::LocalFree(out_blob.pbData as _); // Free memory allocated by DPAPI
+            winapi::um::winbase::LocalFree(out_blob.pbData as _); // Free allocated memory
             Ok(data)
         }
     }
 }
+// ================================================= TSMStorage Struct =============================================================
 
+// ================================================= TSMStorage Implementation =======================================================
 impl KeyStorage for TSMStorage {
     type StoredType = Vec<u8>;
     type Error = TSMStorageError;
 
+    /// Initializes the TSM storage by ensuring the storage directory exists.
     fn initialize(&self, _config: Option<&str>) -> Result<(), Self::Error> {
         let base_path = Path::new(&self.storage_dir);
         if !base_path.exists() {
@@ -127,6 +139,7 @@ impl KeyStorage for TSMStorage {
         Ok(())
     }
 
+    /// Saves an encrypted key to a file in the storage directory.
     fn save(&self, keypair: &Vec<u8>, location: &str, encrypt: bool) -> Result<(), Self::Error> {
         let data_to_store = if encrypt {
             self.encrypt(keypair)?
@@ -144,6 +157,7 @@ impl KeyStorage for TSMStorage {
         Ok(())
     }
 
+    /// Loads an encrypted key from a file and decrypts it if specified.
     fn load(&self, location: &str, decrypt: bool) -> Result<Vec<u8>, Self::Error> {
         let file_path = format!("{}/{}", self.storage_dir, location);
         let encrypted_data = fs::read(&file_path)
@@ -156,12 +170,14 @@ impl KeyStorage for TSMStorage {
         }
     }
 
+    /// Removes a key file from the storage directory.
     fn remove(&self, location: &str) -> Result<(), Self::Error> {
         let file_path = format!("{}/{}", self.storage_dir, location);
         fs::remove_file(file_path)
             .map_err(|e| TSMStorageError::IOError(format!("Failed to remove file: {}", e)))
     }
 
+    /// Lists all keys stored in the storage directory.
     fn list(&self) -> Result<Vec<String>, Self::Error> {
         let storage_dir = Path::new(&self.storage_dir);
         let mut keys = Vec::new();
@@ -178,6 +194,7 @@ impl KeyStorage for TSMStorage {
         Ok(keys)
     }
 
+    /// Retrieves metadata for a stored key.
     fn metadata(&self, location: &str) -> Result<KeyMetadata, Self::Error> {
         let metadata_path = format!("{}/{}.metadata", self.storage_dir, location);
         let metadata_content = fs::read_to_string(metadata_path)
@@ -187,28 +204,9 @@ impl KeyStorage for TSMStorage {
         Ok(metadata)
     }
 }
+// ================================================= TSMStorage Implementation =======================================================
 
-impl fmt::Display for TSMStorageError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-      match self {
-          TSMStorageError::EncryptionError(msg) => write!(f, "Encryption Error: {}", msg),
-          TSMStorageError::DecryptionError(msg) => write!(f, "Decryption Error: {}", msg),
-          TSMStorageError::SerializationError(msg) => write!(f, "Serialization Error: {}", msg),
-          TSMStorageError::DeserializationError(msg) => write!(f, "Deserialization Error: {}", msg),
-          TSMStorageError::IOError(msg) => write!(f, "IO Error: {}", msg),
-          TSMStorageError::WinapiError(code) => write!(f, "WinAPI Error: {}", code),
-      }
-  }
-}
-
-impl From<TSMStorageError> for String {
-  fn from(err: TSMStorageError) -> Self {
-      err.to_string()
-  }
-}
-
-
-
+// ================================================= TSMStorage Tests ===============================================================
 #[cfg(test)]
 #[cfg(all(target_os = "windows", feature = "tsm"))]
 mod tsm_tests {
@@ -234,3 +232,4 @@ mod tsm_tests {
         fs::remove_dir_all("test_storage").expect("Failed to clean up storage directory");
     }
 }
+// ================================================= TSMStorage Tests ===============================================================
