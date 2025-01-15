@@ -12,7 +12,7 @@ use sha2::{Sha256, Digest};
 
 // ======================= Kyber Key Pair Definition =======================
 /// Represents a Kyber key pair.
-
+#[derive(Clone)]
 pub struct KyberKeyPair {
     pub public_key: EncapsKey,
     pub private_key: DecapsKey,
@@ -76,7 +76,6 @@ impl KeyExchange for KyberKeyPair {
 
         let mut ciphertext_vec = ciphertext.into_bytes().to_vec();
         ciphertext_vec.extend_from_slice(&validation_tag);
-
         Ok((shared_secret.into_bytes().to_vec(), ciphertext_vec))
     }
 
@@ -105,7 +104,7 @@ impl KeyExchange for KyberKeyPair {
         let shared_secret = private_key
             .try_decaps(&ciphertext)
             .map_err(|e| PKIError::KeyExchangeError(format!("Decapsulation failed: {}", e)))?;
-
+        println!("Secret Key : {:?}",shared_secret);
         let mut hasher = Sha256::new();
         hasher.update(&shared_secret.clone().into_bytes());
         hasher.update(&ciphertext.into_bytes());

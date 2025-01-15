@@ -1,73 +1,90 @@
-// protocols\handshake\src\handshake.rs
-use crate::traits::{Authenticator, CipherNegotiator, KeyAgreement, SessionKeyDeriver};
-pub struct Handshake<C, A, K, S>
-where
-    C: CipherNegotiator,
-    A: Authenticator,
-    K: KeyAgreement,
-    S: SessionKeyDeriver,
-{
-    pub cipher_negotiator: C,
-    pub authenticator: A,
-    pub key_agreement: K,
-    pub session_key_deriver: S,
-}
+use crate::traits::{HandshakeStep, HandshakeStream};
+use crate::handshake_error::HandshakeError;
+use std::collections::VecDeque;
 
-impl<C, A, K, S> Handshake<C, A, K, S>
-where
-    C: CipherNegotiator,
-    A: Authenticator,
-    K: KeyAgreement,
-    S: SessionKeyDeriver,
-{
-    pub fn new(cipher_negotiator: C, authenticator: A, key_agreement: K, session_key_deriver: S) -> Self {
+pub struct Handshake {
+    protocol_id: String,
+    steps: VecDeque<Box<dyn HandshakeStep>>,
+}
+impl Handshake {
+    /// Create a new handshake with an empty list of steps.
+    pub fn new(protocol_id: &str) -> Self {
         Self {
-            cipher_negotiator,
-            authenticator,
-            key_agreement,
-            session_key_deriver,
+            protocol_id: protocol_id.to_string(),
+            steps: VecDeque::new(),
         }
     }
 
-    pub fn execute(
-        &self,
-        client_suites: &[C::CipherSuite],
-        server_suites: &[C::CipherSuite],
-        auth_public_key: &A::Key,
-        key_agreement_public_key: &K::PublicKey,
-        challenge: &[u8],
-        signature: &[u8],
-        salt: &[u8],
-        session_key_length: usize,
-    ) -> Result<S::Key, String> {
-        // Cipher suite negotiation
-        let cipher_suite = self
-            .cipher_negotiator
-            .negotiate(client_suites, server_suites)
-            .map_err(|e| format!("Cipher suite negotiation failed: {}", e))?;
+    /// Get the protocol ID
+    pub fn protocol_id(&self) -> &str {
+        &self.protocol_id
+    }   
 
-        // Authentication
-        let authenticated = self
-            .authenticator
-            .authenticate(auth_public_key, challenge, signature)
-            .map_err(|e| format!("Authentication failed: {}", e))?;
+    /// Add a new step to the handshake.
+    pub fn add_step(&mut self, mut step: Box<dyn HandshakeStep>) {
+        step.set_protocol_id(&self.protocol_id);
+        self.steps.push_back(step);
+    }
 
-        if !authenticated {
-            return Err("Authentication failed: Invalid credentials".into());
+    /// Insert a step at a specific position.
+    pub fn insert_step(&mut self, index: usize, step: Box<dyn HandshakeStep>) -> Result<(), HandshakeError> {
+        if index <= self.steps.len() {
+            self.steps.insert(index, step);
+            Ok(())
+        } else {
+            Err(HandshakeError::Generic(format!(
+                "Index {} is out of bounds for inserting a step.",
+                index
+            )))
         }
+    }
 
-        // Key agreement
-        let shared_secret = self
-            .key_agreement
-            .agree(key_agreement_public_key)
-            .map_err(|e| format!("Key agreement failed: {}", e))?;
+    /// Remove a step by index.
+    pub fn remove_step(&mut self, index: usize) -> Result<(), HandshakeError> {
+        if index < self.steps.len() {
+            self.steps.remove(index);
+            Ok(())
+        } else {
+            Err(HandshakeError::Generic(format!(
+                "Index {} is out of bounds for removing a step.",
+                index
+            )))
+        }
+    }
 
-        // Session key derivation
-        let session_key = self
-            .session_key_deriver
-            .derive(shared_secret.as_ref(), salt, session_key_length)
-            .map_err(|e| format!("Session key derivation failed: {}", e))?;
+    /// Replace a step at a specific index.
+    pub fn update_step(&mut self, index: usize, step: Box<dyn HandshakeStep>) -> Result<(), HandshakeError> {
+        if index < self.steps.len() {
+            self.steps[index] = step;
+            Ok(())
+        } else {
+            Err(HandshakeError::Generic(format!(
+                "Index {} is out of bounds for updating a step.",
+                index
+            )))
+        }
+    }
 
-        Ok(session_key)
+    /// Retrieve a reference to the current steps.
+    pub fn list_steps(&self) -> Vec<&dyn HandshakeStep> {
+        self.steps.iter().map(|step| step.as_ref()).collect()
+    }
+    pub async fn execute(
+        &mut self,
+        stream: &mut dyn HandshakeStream,
+    ) -> Result<(), HandshakeError> {
+        let mut input = vec![];
+        for step in &mut self.steps {
+            if step.supports_protocol(&self.protocol_id) {
+                input = step.execute(stream, input).await?;
+            } else {
+                eprintln!(
+                    "Skipping step due to protocol mismatch: Expected '{}', Found '{}'",
+                    self.protocol_id,
+                    step.get_protocol_id()
+                );
+            }
+        }
+        Ok(())
     }
 }

@@ -1,6 +1,7 @@
 // identity\src\cipher_suite.rs
 /// Enum representing supported cipher suites in the Nautilus Handshake Protocol.
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Serialize,Deserialize};
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum CipherSuite {
     /// RSA (PKI-based Signature Scheme)
     #[cfg(feature = "pki_rsa")]

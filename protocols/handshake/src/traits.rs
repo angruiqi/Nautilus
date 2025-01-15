@@ -1,34 +1,25 @@
+use tokio::io::{AsyncRead, AsyncWrite};
+use futures::future::BoxFuture;
+use crate::handshake_error::HandshakeError;
 
-// protocols\handshake\src\traits.rs
+pub trait HandshakeStep: Send + Sync {
+    /// Get the protocol ID of the step
+    fn get_protocol_id(&self) -> &str;
 
-pub trait CipherNegotiator {
-    type CipherSuite: Clone + Send + Sync;
-    type Error: std::fmt::Display;
+    /// Set the protocol ID for the step
+    fn set_protocol_id(&mut self, protocol_id: &str);
 
-    fn negotiate(
-        &self,
-        client_suites: &[Self::CipherSuite],
-        server_suites: &[Self::CipherSuite],
-    ) -> Result<Self::CipherSuite, Self::Error>;
+    /// Check if the step supports the given protocol ID
+    fn supports_protocol(&self, protocol_id: &str) -> bool {
+        self.get_protocol_id() == protocol_id
+    }
+
+    /// Execute the step
+    fn execute<'a>(
+        &'a mut self, // Change to mutable reference
+        stream: &'a mut dyn HandshakeStream,
+        input: Vec<u8>,
+    ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>>;
 }
-pub trait Authenticator {
-    type Key: Clone + Send + Sync;
-    type Error: std::fmt::Display;
-
-    fn authenticate(&self, public_key: &Self::Key, challenge: &[u8], signature: &[u8]) -> Result<bool, Self::Error>;
-}
-
-pub trait KeyAgreement {
-    type SharedSecret: AsRef<[u8]> + Clone + Send + Sync;
-    type PublicKey: Clone + Send + Sync;
-    type Error: std::fmt::Display;
-
-    fn agree(&self, public_key: &Self::PublicKey) -> Result<Self::SharedSecret, Self::Error>;
-}
-
-pub trait SessionKeyDeriver {
-    type Key: Clone + Send + Sync;
-    type Error: std::fmt::Display;
-
-    fn derive(&self, shared_secret: &[u8], salt: &[u8], length: usize) -> Result<Self::Key, Self::Error>;
-}
+pub trait HandshakeStream: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> HandshakeStream for T {}

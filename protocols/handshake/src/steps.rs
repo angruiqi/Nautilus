@@ -1,60 +1,190 @@
-// protocols/handshake/src/steps.rs
+use crate::traits::{HandshakeStep, HandshakeStream};
+use crate::handshake_error::HandshakeError;
+use tokio::io::{AsyncWriteExt,AsyncReadExt};
+use futures::future::BoxFuture;
 
-use crate::traits::{Authenticator, CipherNegotiator, KeyAgreement, SessionKeyDeriver};
+/// Node Hello step
+pub struct NodeHello {
+    protocol_id: Option<String>,
+}
 
-// Default Cipher Negotiator
-pub struct DefaultCipherNegotiator;
-
-impl CipherNegotiator for DefaultCipherNegotiator {
-    type CipherSuite = String;
-    type Error = String;
-
-    fn negotiate(
-        &self,
-        client_suites: &[Self::CipherSuite],
-        server_suites: &[Self::CipherSuite],
-    ) -> Result<Self::CipherSuite, Self::Error> {
-        client_suites
-            .iter()
-            .find(|suite| server_suites.contains(suite))
-            .cloned()
-            .ok_or_else(|| "No compatible cipher suite found".to_string())
+impl NodeHello {
+    pub fn new() -> Self {
+        Self { protocol_id: None }
     }
 }
 
-// Default Authenticator
-pub struct DefaultAuthenticator;
+impl HandshakeStep for NodeHello {
+    fn get_protocol_id(&self) -> &str {
+        self.protocol_id.as_deref().unwrap_or("")
+    }
 
-impl Authenticator for DefaultAuthenticator {
-    type Key = Vec<u8>;
-    type Error = String;
+    fn set_protocol_id(&mut self, protocol_id: &str) {
+        self.protocol_id = Some(protocol_id.to_string());
+    }
 
-    fn authenticate(&self, _public_key: &Self::Key, _challenge: &[u8], _signature: &[u8]) -> Result<bool, Self::Error> {
-        Ok(true) // Mock implementation
+    fn execute<'a>(
+        &'a mut self,
+        stream: &'a mut dyn HandshakeStream,
+        _: Vec<u8>,
+    ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>> {
+        Box::pin(async move {
+            stream
+                .write_all(b"HELLO")
+                .await
+                .map_err(|e| HandshakeError::Generic(e.to_string()))?;
+            println!("N1 -> N2: Sending HELLO");
+            Ok(vec![])
+        })
     }
 }
 
-// Default Key Agreement
-pub struct DefaultKeyAgreement;
+/// Hello Response step
+pub struct HelloResponse {
+    protocol_id: Option<String>,
+}
 
-impl KeyAgreement for DefaultKeyAgreement {
-    type SharedSecret = Vec<u8>;
-    type PublicKey = Vec<u8>;
-    type Error = String;
-
-    fn agree(&self, _public_key: &Self::PublicKey) -> Result<Self::SharedSecret, Self::Error> {
-        Ok(vec![0x01, 0x02, 0x03, 0x04]) // Mock shared secret
+impl HelloResponse {
+    pub fn new() -> Self {
+        Self { protocol_id: None }
     }
 }
 
-// Default Session Key Deriver
-pub struct DefaultSessionKeyDeriver;
+impl HandshakeStep for HelloResponse {
+    fn get_protocol_id(&self) -> &str {
+        self.protocol_id.as_deref().unwrap_or("")
+    }
 
-impl SessionKeyDeriver for DefaultSessionKeyDeriver {
-    type Key = Vec<u8>;
-    type Error = String;
+    fn set_protocol_id(&mut self, protocol_id: &str) {
+        self.protocol_id = Some(protocol_id.to_string());
+    }
 
-    fn derive(&self, _shared_secret: &[u8], _salt: &[u8], length: usize) -> Result<Self::Key, Self::Error> {
-        Ok(vec![0x00; length]) // Mock session key
+    fn execute<'a>(
+        &'a mut self,
+        stream: &'a mut dyn HandshakeStream,
+        _: Vec<u8>,
+    ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>> {
+        Box::pin(async move {
+            let mut buffer = [0u8; 5];
+            stream
+                .read_exact(&mut buffer)
+                .await
+                .map_err(|e| HandshakeError::Generic(e.to_string()))?;
+            if &buffer == b"HELLO" {
+                println!("N1 <- N2: Receiving HELLO");
+                Ok(vec![])
+            } else {
+                Err(HandshakeError::Generic("Unexpected response".to_string()))
+            }
+        })
+    }
+}
+/// Cipher Suite Exchange step
+pub struct CipherSuiteExchange {
+    protocol_id: Option<String>,
+}
+
+impl CipherSuiteExchange {
+    pub fn new() -> Self {
+        Self { protocol_id: None }
+    }
+}
+
+impl HandshakeStep for CipherSuiteExchange {
+    fn get_protocol_id(&self) -> &str {
+        self.protocol_id.as_deref().unwrap_or("")
+    }
+
+    fn set_protocol_id(&mut self, protocol_id: &str) {
+        self.protocol_id = Some(protocol_id.to_string());
+    }
+
+    fn execute<'a>(
+        &'a mut self,
+        stream: &'a mut dyn HandshakeStream,
+        _: Vec<u8>,
+    ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>> {
+        Box::pin(async move {
+            stream
+                .write_all(b"CIPHERSUITES")
+                .await
+                .map_err(|e| HandshakeError::NegotiationFailed(e.to_string()))?;
+            println!("N1 -> N2: Exchanging Cipher Suites");
+            Ok(b"CIPHER_ACK".to_vec())
+        })
+    }
+}
+/// Cipher Suite Acknowledgment step
+pub struct CipherSuiteAck {
+    protocol_id: Option<String>,
+}
+
+impl CipherSuiteAck {
+    pub fn new() -> Self {
+        Self { protocol_id: None }
+    }
+}
+
+impl HandshakeStep for CipherSuiteAck {
+    fn get_protocol_id(&self) -> &str {
+        self.protocol_id.as_deref().unwrap_or("")
+    }
+
+    fn set_protocol_id(&mut self, protocol_id: &str) {
+        self.protocol_id = Some(protocol_id.to_string());
+    }
+
+    fn execute<'a>(
+        &'a mut self,
+        stream: &'a mut dyn HandshakeStream,
+        _: Vec<u8>,
+    ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>> {
+        Box::pin(async move {
+            let mut buffer = vec![0; 1024];
+            let n = stream
+                .read(&mut buffer)
+                .await
+                .map_err(|e| HandshakeError::NegotiationFailed(e.to_string()))?;
+            let received = std::str::from_utf8(&buffer[..n])
+                .map_err(|e| HandshakeError::Generic(e.to_string()))?;
+            println!("N1 <- N2: Acknowledging Cipher Suites: {}", received);
+            Ok(vec![])
+        })
+    }
+}
+
+// Custom Step Implementatin
+pub struct CustomProtocolStep {
+    protocol_id: Option<String>,
+}
+
+impl CustomProtocolStep {
+    pub fn new() -> Self {
+        Self { protocol_id: None }
+    }
+}
+
+impl HandshakeStep for CustomProtocolStep {
+    fn get_protocol_id(&self) -> &str {
+        self.protocol_id.as_deref().unwrap_or("")
+    }
+
+    fn set_protocol_id(&mut self, protocol_id: &str) {
+        self.protocol_id = Some(protocol_id.to_string());
+    }
+
+    fn execute<'a>(
+        &'a mut self,
+        stream: &'a mut dyn HandshakeStream,
+        _: Vec<u8>,
+    ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>> {
+        Box::pin(async move {
+            stream
+                .write_all(b"CUSTOM_STEP")
+                .await
+                .map_err(|e| HandshakeError::Generic(e.to_string()))?;
+            println!("CustomProtocolStep executed.");
+            Ok(vec![])
+        })
     }
 }

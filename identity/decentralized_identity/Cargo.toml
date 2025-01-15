@@ -13,8 +13,8 @@ base64 = "0.22.1"
 uuid = { version = "1.10.0", features = ["v4"] }
 
 [features]
-default = ["rsa"]
-rsa = ["identity/pki_rsa"]
+default = ["pki_rsa"]
+pki_rsa = ["identity/pki_rsa"]
 ecdsa = ["identity/ecdsa"]
 ed25519 = ["identity/ed25519"]
 dilithium = ["identity/dilithium"]
