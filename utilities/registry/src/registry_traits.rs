@@ -52,4 +52,7 @@ pub trait Registry<R: Record>: Send + Sync {
     /// # Returns
     /// * `usize` - The current capacity of the registry.
     async fn get_capacity(&self) -> usize;
+
+    /// Implements a LRU -> Last-Recent-Update Policy into the Registry
+    async fn remove_lru(&self) -> Result<(), RegistryError>;
 }
