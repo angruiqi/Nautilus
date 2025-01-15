@@ -39,7 +39,6 @@ dilithium = ["fips204"] # Enable Dilithium support when this feature flag is spe
 spincs = ["fips205"] # Enable Spincs+ support when this feature flag is specified
 falcon = ["pqcrypto-falcon","pqcrypto-traits"] # Not FIPS STANDARD, OFFICIAL RELEASE
 kyber = ["fips203","sha2"]
-
 [[bench]]
 name = "benchmark"
 harness = false
@@ -47,4 +46,3 @@ harness = false
 [dev-dependencies]
 criterion = "0.5.1"
 tokio = {version = "1.0.0",features = ["full"]}
-sysinfo = {version = "0.33.1"}

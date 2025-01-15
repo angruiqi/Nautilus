@@ -35,6 +35,10 @@ pub enum CipherSuite {
     #[cfg(feature = "kyber")]
     Kyber { priority: u8 },
 
+    /// Hybrid KEM (Combination of Classical and Post-Quantum KEM)
+    #[cfg(feature = "hybrid_kem")]
+    HybridKEM { priority: u8 },
+
     /// Custom cipher suite for advanced or experimental use cases.
     Custom { name: String, priority: u8 },
 }

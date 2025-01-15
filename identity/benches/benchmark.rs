@@ -5,10 +5,8 @@ mod csv_util;
 mod pki_benchmark {
     #[cfg(feature = "pki_rsa")]
     pub mod rsa_benchmark; // Declare `rsa_benchmark` as a submodule
-
-    pub mod memory_benchmark;
 }
 
 // Use `criterion_main` to define the entry point for the benchmarks
 #[cfg(feature = "pki_rsa")]
-criterion::criterion_main!(pki_benchmark::memory_benchmark::memory_benchmarks);
+criterion::criterion_main!(pki_benchmark::rsa_benchmark::rsa_benchmarks);
