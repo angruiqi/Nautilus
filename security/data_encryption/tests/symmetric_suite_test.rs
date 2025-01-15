@@ -1,11 +1,12 @@
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use data_encryption::SymmetricCipherSuite;
 
     #[test]
     fn test_name() {
-        #[cfg(feature = "aes256_gcm")]
+        #[cfg(feature = "aes")]
         assert_eq!(SymmetricCipherSuite::AES256GCM { priority: 1 }.name(), "AES256-GCM");
 
         #[cfg(feature = "blowfish")]
@@ -20,7 +21,7 @@ mod tests {
 
     #[test]
     fn test_key_size() {
-        #[cfg(feature = "aes256_gcm")]
+        #[cfg(feature = "aes")]
         assert_eq!(SymmetricCipherSuite::AES256GCM { priority: 1 }.key_size(), 32);
 
         #[cfg(feature = "blowfish")]
@@ -35,7 +36,7 @@ mod tests {
 
     #[test]
     fn test_nonce_size() {
-        #[cfg(feature = "aes256_gcm")]
+        #[cfg(feature = "aes")]
         assert_eq!(SymmetricCipherSuite::AES256GCM { priority: 1 }.nonce_size(), 12);
 
         #[cfg(feature = "blowfish")]
