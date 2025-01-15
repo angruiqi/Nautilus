@@ -16,6 +16,9 @@ linux-keyutils = {version = "0.2.4",optional = true}
 # For File Format Coversion
 pem = {version = "3.0.4"}
 
+# For Cloud Storage
+aws-config = {version = "1.5.13",optional = true}
+aws-sdk-kms ={ version = "1.54",optional = true}
 # data_encryption = {path = "../../security/data_encryption",features = ["pbkdf"]}
 
 [features]
@@ -24,3 +27,4 @@ memory = ["bincode"]  # Feature flag for in-memory storage
 keyring = ["winapi"]
 tsm = ["winapi"]
 linux_secure_storage = ["linux-keyutils"] # Linux secure storage feature
+amazon_secure_kms = ["aws-config","aws-sdk-kms"]

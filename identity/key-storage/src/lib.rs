@@ -37,6 +37,8 @@ mod linux_storage;
 #[cfg(target_os = "linux")]
 pub use linux_storage::*;
 
+
+mod cloud_storage;
 // ============================= File Format Setup ===================================
 mod file_format;
 

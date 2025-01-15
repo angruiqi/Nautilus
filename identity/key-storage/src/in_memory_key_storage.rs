@@ -1,15 +1,47 @@
 // identity\key-storage\src\in_memory_key_storage.rs
+// ==== In-Memory Key Storage ====
+//
+// This module provides an in-memory implementation of the `KeyStorage` trait. It is designed
+// for use in environments where a lightweight, non-persistent storage solution is needed, such
+// as during testing or for temporary key storage.
+//
+// ## Overview
+//
+// - **Backend:** Uses a thread-safe `HashMap` wrapped in an `Arc<Mutex<...>>`.
+// - **Feature Dependency:** Available only when the `memory` feature is enabled in the project.
+//
+// ## Key Features
+//
+// - Save, load, and remove keys securely in memory.
+// - List all stored keys.
+// - Simple initialization with no external dependencies.
+//
+// ## Limitations
+//
+// - Non-persistent: All keys are lost when the application is terminated.
+// - Metadata support is not implemented.
+// ================================================= Memory Storage Imports ====================================================
 #[cfg(feature = "memory")]
 use std::collections::HashMap;
 #[cfg(feature = "memory")]
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "memory")]
 use crate::{KeyStorage, KeyMetadata};
+// ================================================= Memory Storage Imports ====================================================
+
+
+// ================================================= Memory Storage Struct =====================================================
+
 #[cfg(feature = "memory")]
 #[derive(Debug)]
 pub struct MemoryStorage {
     store: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
+
+// ================================================= Memory Storage Struct =====================================================
+
+// ================================================= Memory Storage Implementation =============================================
+
 #[cfg(feature = "memory")]
 impl MemoryStorage {
     pub fn new() -> Self {
@@ -55,6 +87,10 @@ impl KeyStorage for MemoryStorage {
     }
 }
 
+// ================================================= Memory Storage Implementation =============================================
+
+
+// ================================================= Memory Storage Test  ======================================================
 
 #[cfg(feature = "memory")]
 #[cfg(test)]
@@ -121,3 +157,4 @@ mod tests {
         assert_eq!(result.unwrap_err(), "Metadata not implemented for MemoryStorage");
     }
 }
+// ================================================= Memory Storage Test  ======================================================
