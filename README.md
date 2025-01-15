@@ -41,7 +41,7 @@ Nautilus is a Rust-based framework for developing decentralized networks and sec
 
 ### Usage:
 
-Explore the example modules and documentation available in the `examples/` directory to get started with Nautilus and integrate it into your projects.
+Explore the example modules and documentation available in the `examples/` directory to get started with Nautilus and integrate it into your projects. This project contains a few indepedent crates but most of them contain either a `examples` or `tests` folder, these folders hold sufficient information on how to use the sub-crates. Each crate has a specific use in mind within Nautilus but are also designed to be used for generic use-cases apart from Nautilus. 
 
 ### Contributing:
 
