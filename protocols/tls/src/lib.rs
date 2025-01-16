@@ -8,4 +8,4 @@ mod handshake;
 pub use connection::TlsConnection;
 pub use record::{TlsRecord, RecordType, RecordError};
 pub use tls_state::TlsState;
-pub use handshake::{HelloStep,CipherSuiteStep,HandshakeRole};
+pub use handshake::{HelloStep,CipherSuiteStep,HandshakeRole,KyberExchangeStep,FinishStep};

@@ -3040,10 +3040,13 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "async-trait",
+ "fips203",
  "futures",
  "handshake",
+ "identity",
  "nautilus_core",
  "rand",
+ "sha3",
  "thiserror 2.0.11",
  "tokio",
 ]
