@@ -12,3 +12,6 @@ async-trait = {version = "0.1.85"}
 aes-gcm = "0.10" # Check for the latest version
 nautilus_core = {path = "../../core"}
 rand = {version = "0.8.5"}
+identity = {path = "../../identity",default-features = false,features = ["kyber"]}
+fips203 = {version ="0.4.2"}
+sha3 = "0.10"
