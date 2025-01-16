@@ -2925,7 +2925,10 @@ name = "tcp"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures",
+ "handshake",
  "nautilus_core",
+ "tls",
  "tokio",
 ]
 
