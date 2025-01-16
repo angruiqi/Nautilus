@@ -15,4 +15,16 @@ pub enum HandshakeError {
 
     #[error("Generic handshake error: {0}")]
     Generic(String),
+
+    #[error("I/O error: {0}")]
+    IoError(#[from] std::io::Error),
+
+    #[error("Invalid hello response")]
+    InvalidHelloResponse,
+
+    #[error("Step error: {0}")]
+    StepError(String),
+
+    #[error("Negotiation failed: {0}")]
+    NegotiationError(String),
 }

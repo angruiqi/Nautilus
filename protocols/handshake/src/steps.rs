@@ -1,6 +1,6 @@
 use crate::traits::{HandshakeStep, HandshakeStream};
 use crate::handshake_error::HandshakeError;
-use tokio::io::{AsyncWriteExt,AsyncReadExt};
+use tokio::io::{AsyncWriteExt, AsyncReadExt};
 use futures::future::BoxFuture;
 
 /// Node Hello step
@@ -26,14 +26,17 @@ impl HandshakeStep for NodeHello {
     fn execute<'a>(
         &'a mut self,
         stream: &'a mut dyn HandshakeStream,
-        _: Vec<u8>,
+        _input: Vec<u8>,
     ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>> {
         Box::pin(async move {
+            // Send "HELLO"
             stream
                 .write_all(b"HELLO")
                 .await
                 .map_err(|e| HandshakeError::Generic(e.to_string()))?;
             println!("N1 -> N2: Sending HELLO");
+
+            // Return an empty Vec<u8> or some data
             Ok(vec![])
         })
     }
@@ -62,7 +65,7 @@ impl HandshakeStep for HelloResponse {
     fn execute<'a>(
         &'a mut self,
         stream: &'a mut dyn HandshakeStream,
-        _: Vec<u8>,
+        _input: Vec<u8>,
     ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>> {
         Box::pin(async move {
             let mut buffer = [0u8; 5];
@@ -74,11 +77,14 @@ impl HandshakeStep for HelloResponse {
                 println!("N1 <- N2: Receiving HELLO");
                 Ok(vec![])
             } else {
-                Err(HandshakeError::Generic("Unexpected response".to_string()))
+                Err(HandshakeError::Generic(
+                    "Unexpected response".to_string(),
+                ))
             }
         })
     }
 }
+
 /// Cipher Suite Exchange step
 pub struct CipherSuiteExchange {
     protocol_id: Option<String>,
@@ -102,18 +108,21 @@ impl HandshakeStep for CipherSuiteExchange {
     fn execute<'a>(
         &'a mut self,
         stream: &'a mut dyn HandshakeStream,
-        _: Vec<u8>,
+        _input: Vec<u8>,
     ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>> {
         Box::pin(async move {
+            // Send "CIPHERSUITES"
             stream
                 .write_all(b"CIPHERSUITES")
                 .await
                 .map_err(|e| HandshakeError::NegotiationFailed(e.to_string()))?;
             println!("N1 -> N2: Exchanging Cipher Suites");
+            // Return some data so that next step sees it
             Ok(b"CIPHER_ACK".to_vec())
         })
     }
 }
+
 /// Cipher Suite Acknowledgment step
 pub struct CipherSuiteAck {
     protocol_id: Option<String>,
@@ -137,9 +146,10 @@ impl HandshakeStep for CipherSuiteAck {
     fn execute<'a>(
         &'a mut self,
         stream: &'a mut dyn HandshakeStream,
-        _: Vec<u8>,
+        input: Vec<u8>,
     ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>> {
         Box::pin(async move {
+            // Read a response
             let mut buffer = vec![0; 1024];
             let n = stream
                 .read(&mut buffer)
@@ -148,12 +158,14 @@ impl HandshakeStep for CipherSuiteAck {
             let received = std::str::from_utf8(&buffer[..n])
                 .map_err(|e| HandshakeError::Generic(e.to_string()))?;
             println!("N1 <- N2: Acknowledging Cipher Suites: {}", received);
-            Ok(vec![])
+
+            // Maybe return input unchanged
+            Ok(input)
         })
     }
 }
 
-// Custom Step Implementatin
+// Example custom step
 pub struct CustomProtocolStep {
     protocol_id: Option<String>,
 }
@@ -176,7 +188,7 @@ impl HandshakeStep for CustomProtocolStep {
     fn execute<'a>(
         &'a mut self,
         stream: &'a mut dyn HandshakeStream,
-        _: Vec<u8>,
+        _input: Vec<u8>,
     ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>> {
         Box::pin(async move {
             stream
@@ -184,6 +196,7 @@ impl HandshakeStep for CustomProtocolStep {
                 .await
                 .map_err(|e| HandshakeError::Generic(e.to_string()))?;
             println!("CustomProtocolStep executed.");
+            // Return empty or some data
             Ok(vec![])
         })
     }

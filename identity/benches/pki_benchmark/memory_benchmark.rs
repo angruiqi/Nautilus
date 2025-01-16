@@ -26,7 +26,7 @@ fn benchmark_memory_usage(
     generate_keypair: impl Fn() -> (),
     iterations: usize,
 ) {
-    let folder = format!("bench/benchmark_results/memory_bench/{}", cipher_name);
+    let folder = format!("benches/benchmark_results/memory_bench/{}", cipher_name);
     fs::create_dir_all(&folder).expect("Failed to create benchmark result directory");
 
     let file_path = format!("{}/memory_usage.csv", folder);

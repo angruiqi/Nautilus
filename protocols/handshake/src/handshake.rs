@@ -6,6 +6,7 @@ pub struct Handshake {
     protocol_id: String,
     steps: VecDeque<Box<dyn HandshakeStep>>,
 }
+
 impl Handshake {
     /// Create a new handshake with an empty list of steps.
     pub fn new(protocol_id: &str) -> Self {
@@ -18,7 +19,7 @@ impl Handshake {
     /// Get the protocol ID
     pub fn protocol_id(&self) -> &str {
         &self.protocol_id
-    }   
+    }
 
     /// Add a new step to the handshake.
     pub fn add_step(&mut self, mut step: Box<dyn HandshakeStep>) {
@@ -69,13 +70,16 @@ impl Handshake {
     pub fn list_steps(&self) -> Vec<&dyn HandshakeStep> {
         self.steps.iter().map(|step| step.as_ref()).collect()
     }
+
+    /// **Execute** the handshake.  Returns the final `Vec<u8>` from the last step.
     pub async fn execute(
         &mut self,
         stream: &mut dyn HandshakeStream,
-    ) -> Result<(), HandshakeError> {
-        let mut input = vec![];
+    ) -> Result<Vec<u8>, HandshakeError> {
+        let mut input = Vec::new();
         for step in &mut self.steps {
             if step.supports_protocol(&self.protocol_id) {
+                // Each step returns a new Vec<u8>
                 input = step.execute(stream, input).await?;
             } else {
                 eprintln!(
@@ -85,6 +89,7 @@ impl Handshake {
                 );
             }
         }
-        Ok(())
+        // Return the final data from the handshake
+        Ok(input)
     }
 }
