@@ -1,0 +1,11 @@
+[package]
+name = "submarine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nautilus_core = {path = "../core"}
+
+tcp = {path = "../transport/tcp"}
+
+tokio = {version = "1.0.0",features = ["full"]}
