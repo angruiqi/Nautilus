@@ -6,6 +6,7 @@ pub struct DelimiterFraming {
 }
 
 impl DelimiterFraming {
+    #[allow(dead_code)]
     pub fn new(delimiter: u8) -> Self {
         Self { delimiter }
     }
