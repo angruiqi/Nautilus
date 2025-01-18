@@ -17,6 +17,7 @@ use curve25519_dalek::edwards::EdwardsPoint;
 
 // ======================= Ed25519 Key Pair Definition =======================
 #[cfg(feature = "ed25519")]
+#[derive(Clone)]
 pub struct Ed25519KeyPair {
     pub signing_key: SigningKey,
     pub verifying_key: VerifyingKey,

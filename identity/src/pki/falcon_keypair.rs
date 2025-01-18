@@ -10,6 +10,7 @@ use pqcrypto_traits::sign::{DetachedSignature, PublicKey as PublicKeyTrait};
 
 // ======================= Falcon Key Pair Definition =======================
 #[cfg(feature = "falcon")]
+#[derive(Clone)]
 pub struct FalconKeyPair {
     pub public_key: PublicKey,
     pub secret_key: SecretKey,

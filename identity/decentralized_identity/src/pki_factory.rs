@@ -124,8 +124,30 @@ impl PKI {
 impl PKI {
     pub fn private_key_raw_bytes(&self) -> Vec<u8> {
         match self {
+            #[cfg(feature = "pki_rsa")]
             PKI::RSA(rsa_keypair) => rsa_keypair.private_key_raw_bytes(),
-            _ => Vec::new(), // Handle other algorithms if necessary
+    
+            #[cfg(feature = "dilithium")]
+            PKI::Dilithium(_) => {
+                // Handle Dilithium-specific behavior if needed
+                vec![]
+            },
+    
+            #[cfg(feature = "falcon")]
+            PKI::Falcon(_) => {
+                // Handle Falcon-specific behavior if needed
+                vec![]
+            },
+    
+            #[cfg(feature = "ed25519")]
+            PKI::Ed25519(_) => {
+                // Handle Ed25519-specific behavior if needed
+                vec![]
+            },
+    
+            // Fallback for any unsupported or excluded variants
+            #[cfg(not(any(feature = "pki_rsa", feature = "dilithium", feature = "falcon", feature = "ed25519")))]
+            _ => vec![], // Return empty vector or handle unsupported case
         }
     }
 }
@@ -134,12 +156,23 @@ impl PKI {
 impl Clone for PKI {
     fn clone(&self) -> Self {
         match self {
+            #[cfg(feature = "pki_rsa")]
             PKI::RSA(rsa_keypair) => PKI::RSA(rsa_keypair.clone()),
+
+            #[cfg(feature = "dilithium")]
+            PKI::Dilithium(dilithium_keypair) => PKI::Dilithium(dilithium_keypair.clone()),
+
+            #[cfg(feature = "falcon")]
+            PKI::Falcon(falcon_keypair) => PKI::Falcon(falcon_keypair.clone()),
+
+            #[cfg(feature = "ed25519")]
+            PKI::Ed25519(ed25519_keypair) => PKI::Ed25519(ed25519_keypair.clone()),
+
+            #[cfg(not(any(feature = "pki_rsa", feature = "dilithium", feature = "falcon", feature = "ed25519")))]
             _ => panic!("Cloning unsupported for this PKI type"),
         }
     }
 }
-
 pub struct PKIFactory;
 
 impl PKIFactory {
@@ -172,7 +205,7 @@ impl PKIFactory {
                     .map_err(|e| IdentityError::Other(format!("Ed25519 key pair generation failed: {}", e)))?;
                 Ok(PKI::Ed25519(ed25519))
             }
-
+            #[cfg(not(any(feature = "pki_rsa", feature = "dilithium", feature = "falcon", feature = "ed25519")))]
             _ => Err(IdentityError::Other("Unsupported algorithm".to_string())),
         }
     }
