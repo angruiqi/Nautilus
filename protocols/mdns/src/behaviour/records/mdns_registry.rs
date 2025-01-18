@@ -1,20 +1,22 @@
 // protocols\mdns\src\behaviour\records\mdns_registry.rs
 use crate::behaviour::records::mdns_records::{NodeRecord, ServiceRecord};
 use registry::{InMemoryRegistry, Registry, RegistryError};
-
+use std::sync::Arc;
+use crate::MdnsError;
 /// Represents the mDNS registry for managing service and node records.
 pub struct MdnsRegistry {
-    pub service_registry: InMemoryRegistry<ServiceRecord>,
-    pub node_registry: InMemoryRegistry<NodeRecord>,
+    service_registry: Arc<InMemoryRegistry<ServiceRecord>>,
+    node_registry: Arc<InMemoryRegistry<NodeRecord>>,
 }
 
 impl MdnsRegistry {
     /// Creates a new `MdnsRegistry` with default configurations.
-    pub fn new() -> Self {
-        Self {
-            service_registry: InMemoryRegistry::new(50),
-            node_registry: InMemoryRegistry::new(50),
-        }
+    /// Creates a new `MdnsRegistry` with default configurations.
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            service_registry: Arc::new(InMemoryRegistry::new(50)),
+            node_registry: Arc::new(InMemoryRegistry::new(50)),
+        })
     }
 
     /// Adds a service record to the service registry.
@@ -45,6 +47,13 @@ impl MdnsRegistry {
     /// Lists all node records in the registry.
     pub async fn list_nodes(&self) -> Vec<NodeRecord> {
         self.node_registry.list().await
+    }
+}
+
+
+impl From<RegistryError> for MdnsError {
+    fn from(error: RegistryError) -> Self {
+        MdnsError::Generic(error.to_string()) // Adjust this to fit your error structure
     }
 }
 

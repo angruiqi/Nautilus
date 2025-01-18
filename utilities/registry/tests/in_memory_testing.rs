@@ -152,4 +152,75 @@ mod tests {
         assert_eq!(records.len(), 1, "Registry should only contain the newly added record after expiration.");
         assert!(records.iter().any(|r| r.identifier() == "service3"));
     }
+
+    #[tokio::test]
+    async fn test_capacity_enforced_only_on_exceeding_limit() {
+        let registry = InMemoryRegistry::new(2);
+    
+        let record1 = ServiceRecord::new("service1", "http", 8080, None);
+        let record2 = ServiceRecord::new("service2", "http", 8081, None);
+        let record3 = ServiceRecord::new("service3", "https", 8443, None);
+    
+        // Add two records, both should remain in the registry
+        registry.add(record1.clone()).await.unwrap();
+        registry.add(record2.clone()).await.unwrap();
+    
+        let records = registry.list().await;
+        assert_eq!(records.len(), 2, "Registry should contain two records.");
+        assert!(records.iter().any(|r| r.identifier() == "service1"));
+        assert!(records.iter().any(|r| r.identifier() == "service2"));
+    
+        // Add a third record, triggering capacity enforcement
+        registry.add(record3.clone()).await.unwrap();
+    
+        let records = registry.list().await;
+        assert_eq!(records.len(), 2, "Registry should enforce capacity of 2.");
+    
+        // Verify the oldest record is evicted
+        assert!(!records.iter().any(|r| r.identifier() == "service1"));
+        assert!(records.iter().any(|r| r.identifier() == "service2"));
+        assert!(records.iter().any(|r| r.identifier() == "service3"));
+    }
+    
+    #[tokio::test]
+    async fn test_no_eviction_without_exceeding_capacity() {
+        let registry = InMemoryRegistry::new(3);
+    
+        let record1 = ServiceRecord::new("service1", "http", 8080, None);
+        let record2 = ServiceRecord::new("service2", "http", 8081, None);
+    
+        // Add two records, no eviction should occur
+        registry.add(record1.clone()).await.unwrap();
+        registry.add(record2.clone()).await.unwrap();
+    
+        let records = registry.list().await;
+        assert_eq!(records.len(), 2, "Registry should contain both records.");
+        assert!(records.iter().any(|r| r.identifier() == "service1"));
+        assert!(records.iter().any(|r| r.identifier() == "service2"));
+    }
+    
+    #[tokio::test]
+    async fn test_capacity_with_expired_records() {
+        let registry = InMemoryRegistry::new(2);
+    
+        let record1 = ServiceRecord::new("service1", "http", 8080, Some(1)); // TTL: 1 second
+        let record2 = ServiceRecord::new("service2", "http", 8081, None);
+        let record3 = ServiceRecord::new("service3", "https", 8443, None);
+    
+        // Add two records
+        registry.add(record1).await.unwrap();
+        registry.add(record2.clone()).await.unwrap();
+    
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    
+        // Add a new record; expired record should already be removed
+        registry.add(record3.clone()).await.unwrap();
+    
+        let records = registry.list().await;
+        assert_eq!(records.len(), 2, "Registry should maintain capacity after expiration.");
+        assert!(records.iter().any(|r| r.identifier() == "service2"));
+        assert!(records.iter().any(|r| r.identifier() == "service3"));
+    }
+
+
 }

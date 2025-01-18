@@ -172,9 +172,6 @@ impl<R: Record + 'static> InMemoryRegistry<R> {
                 if guard.records.remove(&top.identifier).is_some() {
                     println!("Evicting record due to capacity: {}", top.identifier);
                 }
-            } else {
-                println!("Warning: Heap is empty but capacity is exceeded!");
-                break;
             }
         }
 
@@ -197,21 +194,23 @@ impl<R: Record + Send + Sync + 'static> Registry<R> for InMemoryRegistry<R>{
         let identifier = record.identifier();
         let expires_at = record.expires_at();
 
-        {
-            let mut guard = self.inner.write().unwrap();
+        let mut guard = self.inner.write().unwrap();
 
-            // Insert or update the record
-            guard.records.insert(identifier.clone(), record.clone());
+        // Insert or update the record
+        guard.records.insert(identifier.clone(), record.clone());
 
-            // Insert into the heap
-            guard.heap.push(ExpirationEntry { expires_at, identifier });
+        // Insert into the heap
+        guard.heap.push(ExpirationEntry { expires_at, identifier });
+
+        // Only enforce capacity if the registry size exceeds the capacity
+        if guard.records.len() > guard.capacity {
+            drop(guard); // Release write lock before calling `enforce_capacity`
+            self.enforce_capacity();
         }
-
-        // Enforce capacity after adding the new record
-        self.enforce_capacity();
 
         Ok(())
     }
+
 
     /// Retrieves a record by its identifier.
     async fn get(&self, identifier: &str) -> Option<R> {

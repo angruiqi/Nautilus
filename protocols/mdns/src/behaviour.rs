@@ -6,5 +6,5 @@ pub use mdns_error::MdnsError;
 mod mdns_service;
 
 mod records;
-pub use records::MdnsRegistry;
+pub use records::{MdnsRegistry,ServiceRecord,NodeRecord};
 pub use mdns_service::MdnsService;

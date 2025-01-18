@@ -172,3 +172,15 @@ impl crate::KeySerialization for RSAkeyPair {
         })
     }
 }
+// ================== In Development ======================================
+impl RSAkeyPair{
+        /// Returns the private key in raw byte format
+        pub fn private_key_raw_bytes(&self) -> Vec<u8> {
+            self.private_key
+                .to_pkcs1_der()
+                .expect("Failed to encode private key to PKCS#1 DER format")
+                .as_bytes()
+                .to_vec()
+        }
+    
+}

@@ -6,7 +6,6 @@ pub use record_trait::{Record,RecordType};
 pub use registry_record_error::RegistryError;
 pub use registry_traits::Registry;
 
-
 // ======================================================================================================================================
 
 mod registry_mods;
