@@ -1,7 +1,7 @@
 /// Events emitted by the mDNS protocol behavior.
 use crate::record::DnsRecord;
 use crate::packet::DnsQuestion;
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum MdnsEvent {
     /// A new service or peer has been discovered.
     Discovered(DnsRecord),

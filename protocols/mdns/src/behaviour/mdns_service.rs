@@ -1,16 +1,32 @@
+// protocols\mdns\src\behaviour\mdns_service.rs
+/// ================================== Imports ==========================================
+/// ==================================Local Imports======================================
 use crate::behaviour::records::{NodeRecord, ServiceRecord};
 use crate::{DnsName, DnsPacket, DnsRecord, MdnsError, MdnsRegistry};
+use crate::MdnsEvent;
+/// ==================================External Imports===================================
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::time::{self, Duration};
+use tokio::sync::broadcast;
+/// ==================================External Imports===================================
+/// ================================== Imports ==========================================
 
+
+
+/// ================================= MdnsService Struct ================================
 /// Represents the mDNS service, including registry management and network communication.
 pub struct MdnsService {
     socket: Arc<UdpSocket>,
     pub registry: Arc<MdnsRegistry>,
+    event_sender: broadcast::Sender<MdnsEvent>,
 }
+/// ================================= MdnsService Struct ================================
+
+
+
 
 impl MdnsService {
     /// Sets up a multicast UDP socket for mDNS communication.
@@ -49,12 +65,16 @@ impl MdnsService {
     pub async fn new() -> Result<Arc<Self>, MdnsError> {
         let socket = Self::setup_multicast_socket().await?;
         let registry = MdnsRegistry::new();
+        let (event_sender, _) = broadcast::channel(100);
         Ok(Arc::new(Self {
             socket: Arc::new(socket),
             registry,
+            event_sender,
         }))
     }
-
+    pub fn get_event_receiver(&self) -> broadcast::Receiver<MdnsEvent> {
+        self.event_sender.subscribe() // Subscribe to the broadcast channel
+    }
     /// Registers a local service to the registry.
     pub async fn register_local_service(
         &self,
@@ -76,10 +96,18 @@ impl MdnsService {
     
         // Add the service to the registry
         self.registry
-            .add_service(service)
+            .add_service(service.clone())
             .await
             .map_err(|e| MdnsError::Generic(e.to_string()))?;
-    
+        
+        let _ = self.event_sender.send(MdnsEvent::Discovered(DnsRecord::SRV {
+            name: DnsName::new(&service.id).unwrap(),
+            ttl: service.ttl.unwrap_or(120),
+            priority: service.priority.unwrap_or(0),
+            weight: service.weight.unwrap_or(0),
+            port: service.port,
+            target: DnsName::new(&service.origin).unwrap(),
+        }));
         // Ensure the service's origin node is also in the node registry
         self.add_node_to_registry(&origin, "127.0.0.1", ttl).await // Default IP for local service
     }
@@ -136,10 +164,10 @@ impl MdnsService {
             .await
             .map_err(MdnsError::NetworkError)?;
 
-        println!(
-            "(SEND) Sent mDNS packet with {} answers",
-            packet.answers.len()
-        );
+        // println!(
+        //     "(SEND) Sent mDNS packet with {} answers",
+        //     packet.answers.len()
+        // );
         Ok(())
     }
 
@@ -148,10 +176,10 @@ impl MdnsService {
         let mut ticker = time::interval(Duration::from_secs(interval_secs));
         loop {
             ticker.tick().await;
-            println!(
-                "(QUERY) Sending periodic query for service type: {}",
-                service_type
-            );
+            // println!(
+            //     "(QUERY) Sending periodic query for service type: {}",
+            //     service_type
+            // );
             let mut packet = DnsPacket::new();
             packet.flags = 0x0000;
             packet.questions.push(crate::DnsQuestion {
@@ -198,10 +226,10 @@ impl MdnsService {
     
         // Check if the IP address is already assigned to a different node
         if let Some(conflicting_node) = nodes.iter().find(|node| node.ip_address == ip_address && node.id != normalized_id) {
-            println!(
-                "(DISCOVERY) Conflict: IP address {} is already assigned to node {}",
-                ip_address, conflicting_node.id
-            );
+            // println!(
+            //     "(DISCOVERY) Conflict: IP address {} is already assigned to node {}",
+            //     ip_address, conflicting_node.id
+            // );
             return Err(MdnsError::Generic(format!(
                 "IP conflict: {} is already assigned to {}",
                 ip_address, conflicting_node.id
@@ -211,10 +239,10 @@ impl MdnsService {
         // Check if the node already exists
         if let Some(existing_node) = nodes.iter_mut().find(|node| node.id == normalized_id) {
             if existing_node.ip_address != ip_address {
-                println!(
-                    "(DISCOVERY) Updating node {} IP from {} to {}",
-                    normalized_id, existing_node.ip_address, ip_address
-                );
+                // println!(
+                //     "(DISCOVERY) Updating node {} IP from {} to {}",
+                //     normalized_id, existing_node.ip_address, ip_address
+                // );
     
                 // Update the node's IP address
                 existing_node.ip_address = ip_address.clone();
@@ -229,10 +257,10 @@ impl MdnsService {
                     .await
                     .map_err(|e| MdnsError::Generic(e.to_string()))?;
             } else {
-                println!(
-                    "(DISCOVERY) Node {} with IP {} already exists in the registry.",
-                    normalized_id, ip_address
-                );
+                // println!(
+                //     "(DISCOVERY) Node {} with IP {} already exists in the registry.",
+                //     normalized_id, ip_address
+                // );
             }
         } else {
             // Add a new node
@@ -263,15 +291,12 @@ impl MdnsService {
                 .recv_from(&mut buf)
                 .await
                 .map_err(MdnsError::NetworkError)?;
-            println!("(LISTEN) Packet received from {} with size {}", src, len);
 
             if let Ok(packet) = DnsPacket::parse(&buf[..len]) {
                 let is_response = (packet.flags & 0x8000) != 0;
                 if is_response {
-                    println!("(LISTEN) Response packet from {}", src);
                     self.process_response(&packet, &src).await;
                 } else {
-                    println!("(LISTEN) Query packet from {}", src);
                     self.process_query(&packet, &src).await;
                 }
             } else {
@@ -326,7 +351,6 @@ impl MdnsService {
             registry_service.print_node_registry().await;
         });
 
-        println!("(TASK) All tasks are running.");
     }
 
     async fn process_response(&self, packet: &DnsPacket, src: &SocketAddr) {
@@ -346,7 +370,7 @@ impl MdnsService {
                         if let Err(e) = result {
                             eprintln!("(DISCOVERY) Failed to add node: {:?}", e);
                         }
-    
+                        let _ = self.event_sender.send(MdnsEvent::Discovered(answer.clone()));
                         // Log the updated registry state
                         let nodes = self.registry.list_nodes().await;
                         println!("(REGISTRY) Current nodes: {:?}", nodes);
@@ -360,23 +384,23 @@ impl MdnsService {
 
     async fn process_query(&self, packet: &DnsPacket, src: &SocketAddr) {
         for question in &packet.questions {
-            println!("(QUERY) Received question: {:?}", question.qname);
+            // println!("(QUERY) Received question: {:?}", question.qname);
     
             if question.qtype == 12 && question.qclass == 1 {
                 // Join labels from the query to form the full service name
                 let requested_service = question.qname.labels.join(".");
-                println!("Service : {:?}", requested_service);
+                // println!("Service : {:?}", requested_service);
     
                 // Fetch all registered services
                 let services = self.registry.list_services().await;
-                println!("Service list : {:?}", services);
+                // println!("Service list : {:?}", services);
     
                 // Find matching services by comparing IDs
                 let matching_services: Vec<_> = services
                     .into_iter()
                     .filter(|s| s.id.trim_end_matches('.').ends_with(&requested_service))
                     .collect();
-                println!("Matching Service : {:?}", matching_services);
+                // println!("Matching Service : {:?}", matching_services);
     
                 if matching_services.is_empty() {
                     println!("(QUERY) No matching service for '{}'", requested_service);
@@ -428,6 +452,10 @@ impl MdnsService {
                         "(QUERY->RESP) Sent response with {} answers.",
                         response_packet.answers.len()
                     );
+                    let _ = self.event_sender.send(MdnsEvent::QueryResponse {
+                        question: question.clone(),
+                        records: response_packet.answers.clone(),
+                    });
                 }
             }
         }
