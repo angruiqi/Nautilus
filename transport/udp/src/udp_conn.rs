@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 use std::sync::Arc;
 use nautilus_core::connection::{ConnectionError, Datagram};
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct UdpConnection {
     socket: Arc<Mutex<Option<UdpSocket>>>,
 }

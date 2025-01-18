@@ -88,6 +88,7 @@ impl CipherSuite {
 
     /// Returns a list of supported Signature/Verification schemes.
     pub fn supported_signature_schemes() -> Vec<String> {
+        #[allow(unused_mut)]
         let mut schemes = vec![];
 
         #[cfg(feature = "pki_rsa")]
