@@ -9,9 +9,22 @@ use crate::tcp_events::TcpEvent;
 
 #[cfg(feature="framing")]
 use nautilus_core::connection::framing::{Framing,FramingError};
+
+
+// --- Tls-specific dependencies ---
+#[cfg(feature="tls_layer")]
+use std::sync::Mutex;
+#[cfg(feature="tls_layer")]
+use tls::{TlsRecord, RecordType};
+#[cfg(feature="tls_layer")]
+use tls::TlsState;
+#[cfg(feature="tls_layer")]
+use handshake::Handshake;
+
+
 #[derive(Debug)]
 pub struct TcpConnection {
-    stream: Option<TcpStream>,
+    pub stream: Option<TcpStream>,
     conn_event_bus: Arc<EventBus<ConnectionEvent>>, // EventBus for generic connection events
     tcp_event_bus: Arc<EventBus<TcpEvent>>,        // EventBus for TCP-specific events
 }
@@ -34,7 +47,13 @@ impl TcpConnection {
     async fn publish_tcp_event(&self, event: TcpEvent) {
         self.tcp_event_bus.publish(event).await;
     }
+    pub fn take_stream(&mut self) -> Option<TcpStream> {
+        self.stream.take()
+    }
 }
+
+
+
 #[cfg(feature="framing")]
 impl TcpConnection{
     pub async fn send_frame(&mut self, data: &[u8]) -> Result<(), ConnectionError> {
@@ -114,6 +133,99 @@ impl TcpConnection{
         }
     }
 }
+
+// --------------------------------------------------------------------
+// TLS-SPECIFIC: Implement optional TLS handling
+#[cfg(feature="tls_layer")]
+impl TcpConnection {
+    /// Perform a TLS handshake on top of the existing TCP stream.
+    /// Replaces the underlying `TcpStream` with an already-handshaked `TcpStream`
+    /// that is ready for encrypted reads/writes. 
+    pub async fn upgrade_to_tls(
+        &mut self,
+        mut handshake: Handshake,
+        state: Arc<Mutex<TlsState>>,
+    ) -> Result<(), ConnectionError> {
+        if let Some(ref mut stream) = self.stream {
+            // 1) Perform handshake
+            let _final_bytes = handshake
+                .execute(stream)
+                .await
+                .map_err(|e| ConnectionError::ConnectionFailed(e.to_string()))?;
+
+            // 2) Mark handshake complete in TlsState
+            {
+                let mut st = state.lock().map_err(|_| ConnectionError::Generic("Mutex Poisoned".into()))?;
+                st.set_handshake_complete(true);
+            }
+
+            // Optionally do something with `final_bytes` if needed
+
+            // If you want to keep track that this is now a "TLS-enabled" connection,
+            // you might store e.g. a TlsSession struct in your TcpConnection:
+            // self.tls_session = Some(TlsSession::new(...));
+            // 
+            // But if you prefer to keep the same `TcpStream`, that is also possible
+            // (assuming the handshake code performed in-line modification of the TCP data).
+            // 
+            // For now, we will assume everything is in the same `stream`.
+
+            Ok(())
+        } else {
+            Err(ConnectionError::ConnectionFailed("No active TCP stream".to_string()))
+        }
+    }
+
+    /// Send data over TLS
+    /// Encrypt data with the session key, build TlsRecord, and write to `self.stream`.
+    pub async fn tls_send(&mut self, data: &[u8], state: Arc<Mutex<TlsState>>) -> Result<(), ConnectionError> {
+        let session_key = {
+            let st = state.lock().map_err(|_| ConnectionError::SendFailed("Mutex Poisoned".into()))?;
+            st.session_key().to_vec()
+        };
+
+        if let Some(ref mut stream) = self.stream {
+            let mut record = TlsRecord::new(RecordType::ApplicationData, data.to_vec());
+            record.encrypt(&session_key).map_err(|e| ConnectionError::SendFailed(e.to_string()))?;
+
+            stream.write_all(&record.serialize())
+                .await
+                .map_err(|e| ConnectionError::SendFailed(e.to_string()))?;
+            
+            Ok(())
+        } else {
+            Err(ConnectionError::SendFailed("No active connection".to_string()))
+        }
+    }
+
+    /// Receive data over TLS
+    /// Read TlsRecord from `self.stream`, decrypt, and return the application data.
+    pub async fn tls_receive(&mut self, state: Arc<Mutex<TlsState>>) -> Result<Vec<u8>, ConnectionError> {
+        let session_key = {
+            let st = state.lock().map_err(|_| ConnectionError::ReceiveFailed("Mutex Poisoned".into()))?;
+            st.session_key().to_vec()
+        };
+
+        if let Some(ref mut stream) = self.stream {
+            let mut buf = vec![0u8; 4096];
+            let n = stream.read(&mut buf)
+                .await
+                .map_err(|e| ConnectionError::ReceiveFailed(e.to_string()))?;
+
+            let mut record = TlsRecord::deserialize(&buf[..n])
+                .map_err(|e| ConnectionError::ReceiveFailed(e.to_string()))?;
+            let payload = record.decrypt(&session_key)
+                .map_err(|e| ConnectionError::ReceiveFailed(e.to_string()))?;
+
+            Ok(payload)
+        } else {
+            Err(ConnectionError::ReceiveFailed("No active connection".to_string()))
+        }
+    }
+}
+// --------------------------------------------------------------------
+
+
 
 #[async_trait]
 impl Connection for TcpConnection {
@@ -278,3 +390,10 @@ impl TransportListener<TcpConnection, ConnectionError> for TcpTransportListener 
 
 
 
+impl TcpTransportListener {
+    pub fn local_addr(&self) -> Result<std::net::SocketAddr, ConnectionError> {
+        self.listener
+            .local_addr()
+            .map_err(|e| ConnectionError::ConnectionFailed(e.to_string()))
+    }
+}

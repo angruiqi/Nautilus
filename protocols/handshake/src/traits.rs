@@ -16,7 +16,7 @@ pub trait HandshakeStep: Send + Sync {
 
     /// Execute the step
     fn execute<'a>(
-        &'a mut self, // Change to mutable reference
+        &'a mut self, 
         stream: &'a mut dyn HandshakeStream,
         input: Vec<u8>,
     ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>>;
