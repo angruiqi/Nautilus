@@ -5,15 +5,13 @@ use tokio::signal;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the mDNS service
     let mdns_service = MdnsService::new().await?;
-
-    // Register a local service
-    mdns_service
+        mdns_service
         .register_local_service(
-            "MyService._http._tcp.local.".to_string(),
-            "_http._tcp.local.".to_string(),
+            "_myservice._http._tcp.local.".to_string(),
+            "_myservice._http._tcp.local.".to_string(),
             8080,
             Some(120),
-            "MyHost.local.".to_string(),
+            "MyHost21.local.".to_string(),
         )
         .await?;
     println!("Local service registered.");
@@ -22,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mdns_service_clone = mdns_service.clone();
     tokio::spawn(async move {
         mdns_service_clone
-            .run("_http._tcp.local.".to_string(), 5, 10)
+            .run("_myservice._http._tcp.local.".to_string(), 5, 10)
             .await;
     });
 

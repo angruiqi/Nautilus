@@ -121,6 +121,25 @@ impl PKI {
     }
 }
 
+impl PKI {
+    pub fn private_key_raw_bytes(&self) -> Vec<u8> {
+        match self {
+            PKI::RSA(rsa_keypair) => rsa_keypair.private_key_raw_bytes(),
+            _ => Vec::new(), // Handle other algorithms if necessary
+        }
+    }
+}
+
+// Ensure the PKI::RSA (or other types) implement Clone
+impl Clone for PKI {
+    fn clone(&self) -> Self {
+        match self {
+            PKI::RSA(rsa_keypair) => PKI::RSA(rsa_keypair.clone()),
+            _ => panic!("Cloning unsupported for this PKI type"),
+        }
+    }
+}
+
 pub struct PKIFactory;
 
 impl PKIFactory {

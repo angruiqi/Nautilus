@@ -9,7 +9,7 @@ use std::fmt;
 /// along with utilities for validation and formatting.
 #[derive(Clone, PartialEq, Debug)]
 pub struct DnsName {
-    labels: Vec<String>,
+    pub labels: Vec<String>,
 }
 
 impl DnsName {
