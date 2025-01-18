@@ -1,13 +1,14 @@
 // protocols\mdns\src\name.rs
 use std::io::Read;
 use bytes::Buf;
+use serde::Serialize;
 use std::fmt;
 
 /// Represents a DNS name, composed of multiple labels.
 ///
 /// A `DnsName` provides methods for creating, writing, and parsing DNS names,
 /// along with utilities for validation and formatting.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug,Serialize)]
 pub struct DnsName {
     pub labels: Vec<String>,
 }

@@ -315,42 +315,34 @@ impl MdnsService {
     }
 
     /// Runs the mDNS service, spawning advertise, query, listen, and registry print tasks.
-    pub async fn run(
-        self: Arc<Self>,
-        service_type: String,
-        query_interval: u64,
-        advertise_interval: u64,
-    ) {
+    pub async fn run(self: Arc<Self>, service_type: String, query_interval: u64, advertise_interval: u64) {
         let advertise_service = Arc::clone(&self);
         let query_service = Arc::clone(&self);
         let listen_service = Arc::clone(&self);
         let registry_service = Arc::clone(&self);
-
+    
         tokio::spawn(async move {
             loop {
-                time::sleep(Duration::from_secs(advertise_interval)).await;
+                tokio::time::sleep(Duration::from_secs(advertise_interval)).await;
                 if let Err(err) = advertise_service.advertise_services().await {
                     eprintln!("(ADVERTISE) Error: {:?}", err);
                 }
             }
         });
-
+    
         tokio::spawn(async move {
-            query_service
-                .periodic_query(&service_type, query_interval)
-                .await;
+            query_service.periodic_query(&service_type, query_interval).await;
         });
-
+    
         tokio::spawn(async move {
             if let Err(err) = listen_service.listen().await {
                 eprintln!("(LISTEN) Error: {:?}", err);
             }
         });
-
+    
         tokio::spawn(async move {
             registry_service.print_node_registry().await;
         });
-
     }
 
     async fn process_response(&self, packet: &DnsPacket, src: &SocketAddr) {

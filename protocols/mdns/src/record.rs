@@ -4,11 +4,11 @@
 use crate::name::DnsName;
 use std::io::Read;
 use bytes::Buf;
-
+use serde::Serialize;
 /// Represents DNS resource records (RR) used in the mDNS protocol.
 ///
 /// `DnsRecord` supports multiple record types such as A, PTR, SRV, and TXT.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,Serialize)]
 pub enum DnsRecord {
     /// A Record - Maps a name to an IPv4 address.
     A {
