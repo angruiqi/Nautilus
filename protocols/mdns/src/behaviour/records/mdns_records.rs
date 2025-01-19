@@ -1,17 +1,19 @@
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, Duration};
 use registry::Record;
+use std::fmt;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceRecord {
-    pub id: String,            // Unique service identifier.
-    pub service_type: String,  // e.g., `_http._tcp.local.`
-    pub port: u16,             // Service port.
-    pub ttl: Option<u32>,      // Time-to-live.
-    pub origin: String,        // Origin of the service (e.g., "local" or a peer's ID).
-    pub priority: Option<u16>, // Optional SRV priority.
-    pub weight: Option<u16>,   // Optional SRV weight.
+    pub id: String,
+    pub service_type: String,
+    pub port: u16,
+    pub ttl: Option<u32>,
+    pub origin: String,
+    pub priority: Option<u16>,
+    pub weight: Option<u16>,
+    pub node_id: String, // New field linking the service to the node
 }
 
 impl Record for ServiceRecord {
@@ -23,12 +25,29 @@ impl Record for ServiceRecord {
         self.ttl.map(|ttl_secs| SystemTime::now() + Duration::from_secs(ttl_secs.into()))
     }
 }
+impl fmt::Display for ServiceRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ServiceRecord {{ id: {}, service_type: {}, port: {}, ttl: {:?}, origin: {}, priority: {:?}, weight: {:?}, node_id: {} }}",
+            self.id,
+            self.service_type,
+            self.port,
+            self.ttl,
+            self.origin,
+            self.priority,
+            self.weight,
+            self.node_id
+        )
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeRecord {
-    pub id: String,         // Unique node ID
-    pub ip_address: String, // IP address of the node
-    pub ttl: Option<u32>,   // Time-to-live for the node record
+    pub id: String,
+    pub ip_address: String,
+    pub ttl: Option<u32>,
+    pub services: Vec<String>, // New field listing services offered by the node
 }
 
 impl Record for NodeRecord {

@@ -48,6 +48,16 @@ impl MdnsRegistry {
     pub async fn list_nodes(&self) -> Vec<NodeRecord> {
         self.node_registry.list().await
     }
+
+
+    /// Lists all services associated with a specific node.
+    pub async fn list_services_by_node(&self, node_id: &str) -> Vec<ServiceRecord> {
+        let services = self.list_services().await;
+        services.into_iter()
+            .filter(|service| service.node_id == node_id)
+            .collect()
+    }
+
 }
 
 
@@ -56,7 +66,6 @@ impl From<RegistryError> for MdnsError {
         MdnsError::Generic(error.to_string()) // Adjust this to fit your error structure
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,6 +84,7 @@ mod tests {
             origin: "local".to_string(),
             priority: Some(10),
             weight: Some(5),
+            node_id: "node1".to_string(),
         };
 
         registry.add_service(service.clone()).await.unwrap();
@@ -85,6 +95,7 @@ mod tests {
         assert_eq!(retrieved_service.id, "service1");
         assert_eq!(retrieved_service.priority, Some(10));
         assert_eq!(retrieved_service.weight, Some(5));
+        assert_eq!(retrieved_service.node_id, "node1");
     }
 
     #[tokio::test]
@@ -99,6 +110,7 @@ mod tests {
             origin: "local".to_string(),
             priority: Some(10),
             weight: Some(5),
+            node_id: "node2".to_string(),
         };
 
         registry.add_service(service).await.unwrap();
@@ -116,6 +128,7 @@ mod tests {
             id: "node1".to_string(),
             ip_address: "192.168.1.1".to_string(),
             ttl: Some(10),
+            services: vec!["service1".to_string()],
         };
 
         registry.add_node(node.clone()).await.unwrap();
@@ -133,6 +146,7 @@ mod tests {
             id: "node2".to_string(),
             ip_address: "192.168.1.2".to_string(),
             ttl: Some(1),
+            services: vec![],
         };
 
         registry.add_node(node).await.unwrap();
@@ -155,6 +169,7 @@ mod tests {
                 origin: "local".to_string(),
                 priority: Some(10),
                 weight: Some(5),
+                node_id: format!("node{}", i),
             };
             registry.add_service(service).await.unwrap();
         }
@@ -171,12 +186,14 @@ mod tests {
             id: "evictable_node".to_string(),
             ip_address: "192.168.1.100".to_string(),
             ttl: Some(1),
+            services: vec!["service_evict".to_string()],
         };
 
         let new_node = NodeRecord {
             id: "new_node".to_string(),
             ip_address: "192.168.1.101".to_string(),
             ttl: None,
+            services: vec![],
         };
 
         registry.add_node(evictable_node).await.unwrap();
@@ -202,6 +219,7 @@ mod tests {
                 origin: "local".to_string(),
                 priority: Some(10),
                 weight: Some(5),
+                node_id: format!("node{}", i),
             };
             registry.add_service(service).await.unwrap();
         }
@@ -215,6 +233,7 @@ mod tests {
             origin: "local".to_string(),
             priority: Some(10),
             weight: Some(5),
+            node_id: "new_node".to_string(),
         };
         registry.add_service(new_service.clone()).await.unwrap();
 

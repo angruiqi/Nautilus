@@ -81,98 +81,89 @@ impl MdnsService {
         self.event_sender.subscribe() // Subscribe to the broadcast channel
     }
    
-    /// Registers a local service to the registry.
-    pub async fn register_local_service(
-        &self,
-        id: String,
-        service_type: String,
-        port: u16,
-        ttl: Option<u32>,
-        origin: String,
-    ) -> Result<(), MdnsError> {
-        let service = ServiceRecord {
-            id: id.clone(),
-            service_type,
-            port,
-            ttl,
-            origin: origin.clone(),
-            priority: Some(0),
-            weight: Some(0),
-        };
-    
-        self.registry
-            .add_service(service.clone())
-            .await
-            .map_err(|e| MdnsError::Generic(e.to_string()))?;
-    
-        // Optionally, notify via event
-        let _ = self.event_sender.send(MdnsEvent::Discovered(DnsRecord::SRV {
-            name: DnsName::new(&service.id).unwrap(),
-            ttl: service.ttl.unwrap_or(120),
-            priority: service.priority.unwrap_or(0),
-            weight: service.weight.unwrap_or(0),
-            port: service.port,
-            target: DnsName::new(&service.origin).unwrap(),
-        }));
-    
-        Ok(())
-    }
+/// Registers a local service to the registry.
+pub async fn register_local_service(
+    &self,
+    id: String,
+    service_type: String,
+    port: u16,
+    ttl: Option<u32>,
+    origin: String,
+) -> Result<(), MdnsError> {
+    let service = ServiceRecord {
+        id: id.clone(),
+        service_type,
+        port,
+        ttl,
+        origin: origin.clone(),
+        priority: Some(0),
+        weight: Some(0),
+        node_id: origin.clone(),  // Associate the service with the node
+    };
+
+    self.registry
+        .add_service(service.clone())
+        .await
+        .map_err(|e| MdnsError::Generic(e.to_string()))?;
+
+    // Optionally, notify via event
+    let _ = self.event_sender.send(MdnsEvent::Discovered(DnsRecord::SRV {
+        name: DnsName::new(&service.id).unwrap(),
+        ttl: service.ttl.unwrap_or(120),
+        priority: service.priority.unwrap_or(0),
+        weight: service.weight.unwrap_or(0),
+        port: service.port,
+        target: DnsName::new(&service.origin).unwrap(),
+    }));
+
+    Ok(())
+}
+
    
-    /// Creates an mDNS advertisement packet from the service registry.
-    pub async fn create_advertise_packet(&self) -> Result<DnsPacket, MdnsError> {
-        let services = self.registry.list_services().await; // List all registered services
-        let mut packet = DnsPacket::new();
-        packet.flags = 0x8400; // Set response flags
-    
-        let local_ip = get_local_ipv4()
-            .ok_or_else(|| MdnsError::Generic("Failed to get local IP".to_string()))?;
-        let origin = {
-            let origin_lock = self.origin.read().await;
-            origin_lock
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| "UnknownOrigin.local".to_string())
-        };
-    
-        if services.is_empty() {
-            println!("(ADVERTISE) No local services to advertise.");
-        } else {
-            for service in services {
-                println!("(ADVERTISE) Including service in packet: {:?}", service);
-    
-                packet.answers.push(DnsRecord::PTR {
-                    name: DnsName::new(&service.service_type).unwrap(),
-                    ttl: service.ttl.unwrap_or(120),
-                    ptr_name: DnsName::new(&service.id).unwrap(),
-                });
-    
-                packet.answers.push(DnsRecord::SRV {
-                    name: DnsName::new(&service.id).unwrap(),
-                    ttl: service.ttl.unwrap_or(120),
-                    priority: service.priority.unwrap_or(0),
-                    weight: service.weight.unwrap_or(0),
-                    port: service.port,
-                    target: DnsName::new(&origin).unwrap(),
-                });
-    
-                packet.answers.push(DnsRecord::A {
-                    name: DnsName::new(&service.origin).unwrap(),
-                    ttl: service.ttl.unwrap_or(120),
-                    ip: local_ip.octets(),
-                });
-            }
+pub async fn create_advertise_packet(&self) -> Result<DnsPacket, MdnsError> {
+    let origin = {
+        let origin_lock = self.origin.read().await;
+        origin_lock.clone().unwrap_or_else(|| "UnknownOrigin.local".to_string())
+    };
+
+    let services = self.registry.list_services_by_node(&origin).await; 
+    let mut packet = DnsPacket::new();
+    packet.flags = 0x8400; // Set response flags
+
+    let local_ip = get_local_ipv4()
+        .ok_or_else(|| MdnsError::Generic("Failed to get local IP".to_string()))?;
+
+    if services.is_empty() {
+        println!("(ADVERTISE) No local services to advertise.");
+    } else {
+        for service in services {
+            println!("(ADVERTISE) Including service in packet: {:?}", service);
+
+            packet.answers.push(DnsRecord::PTR {
+                name: DnsName::new(&service.service_type).unwrap(),
+                ttl: service.ttl.unwrap_or(120),
+                ptr_name: DnsName::new(&service.id).unwrap(),
+            });
+
+            packet.answers.push(DnsRecord::SRV {
+                name: DnsName::new(&service.id).unwrap(),
+                ttl: service.ttl.unwrap_or(120),
+                priority: service.priority.unwrap_or(0),
+                weight: service.weight.unwrap_or(0),
+                port: service.port,
+                target: DnsName::new(&origin).unwrap(),
+            });
+
+            packet.answers.push(DnsRecord::A {
+                name: DnsName::new(&service.origin).unwrap(),
+                ttl: service.ttl.unwrap_or(120),
+                ip: local_ip.octets(),
+            });
         }
-    
-        // Add a default A record for the node itself
-        packet.answers.push(DnsRecord::A {
-            name: DnsName::new(&origin).unwrap(),
-            ttl: 120,
-            ip: local_ip.octets(),
-        });
-    
-        Ok(packet)
     }
 
+    Ok(packet)
+}
     /// Sends an mDNS packet over the network.
     pub async fn send_packet(&self, packet: &DnsPacket) -> Result<(), MdnsError> {
         let bytes = packet.serialize();
@@ -245,10 +236,6 @@ impl MdnsService {
     
         // Check if the IP address is already assigned to a different node
         if let Some(conflicting_node) = nodes.iter().find(|node| node.ip_address == ip_address && node.id != normalized_id) {
-            // println!(
-            //     "(DISCOVERY) Conflict: IP address {} is already assigned to node {}",
-            //     ip_address, conflicting_node.id
-            // );
             return Err(MdnsError::Generic(format!(
                 "IP conflict: {} is already assigned to {}",
                 ip_address, conflicting_node.id
@@ -258,41 +245,27 @@ impl MdnsService {
         // Check if the node already exists
         if let Some(existing_node) = nodes.iter_mut().find(|node| node.id == normalized_id) {
             if existing_node.ip_address != ip_address {
-                // println!(
-                //     "(DISCOVERY) Updating node {} IP from {} to {}",
-                //     normalized_id, existing_node.ip_address, ip_address
-                // );
-    
-                // Update the node's IP address
                 existing_node.ip_address = ip_address.clone();
     
-                // Replace the node in the registry
                 self.registry
                     .add_node(NodeRecord {
                         id: normalized_id.clone(),
                         ip_address: ip_address.clone(),
                         ttl,
+                        services: existing_node.services.clone(),
                     })
                     .await
                     .map_err(|e| MdnsError::Generic(e.to_string()))?;
-            } else {
-                // println!(
-                //     "(DISCOVERY) Node {} with IP {} already exists in the registry.",
-                //     normalized_id, ip_address
-                // );
             }
         } else {
-            // Add a new node
-            println!(
-                "(DISCOVERY) Adding new node: {} with IP {}",
-                normalized_id, ip_address
-            );
+            println!("(DISCOVERY) Adding new node: {} with IP {}", normalized_id, ip_address);
     
             self.registry
                 .add_node(NodeRecord {
                     id: normalized_id.clone(),
                     ip_address,
                     ttl,
+                    services: Vec::new(),  // Ensure a new node starts with an empty service list
                 })
                 .await
                 .map_err(|e| MdnsError::Generic(e.to_string()))?;
@@ -300,7 +273,6 @@ impl MdnsService {
     
         Ok(())
     }
-    
     /// Listens for incoming mDNS packets and processes them.
     pub async fn listen(&self) -> Result<(), MdnsError> {
         let mut buf = [0; 4096];
