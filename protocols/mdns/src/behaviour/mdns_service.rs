@@ -8,6 +8,7 @@ use crate::MdnsEvent;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tokio::net::UdpSocket;
 use tokio::time::{self, Duration};
 use tokio::sync::broadcast;
@@ -22,6 +23,7 @@ pub struct MdnsService {
     socket: Arc<UdpSocket>,
     pub registry: Arc<MdnsRegistry>,
     event_sender: broadcast::Sender<MdnsEvent>,
+    origin: Arc<RwLock<Option<String>>>, // Use RwLock to allow mutable access
 }
 /// ================================= MdnsService Struct ================================
 
@@ -62,19 +64,23 @@ impl MdnsService {
     }
 
     /// Creates a new mDNS service instance.
-    pub async fn new() -> Result<Arc<Self>, MdnsError> {
+    pub async fn new(origin: Option<String>) -> Result<Arc<Self>, MdnsError> {
         let socket = Self::setup_multicast_socket().await?;
         let registry = MdnsRegistry::new();
         let (event_sender, _) = broadcast::channel(100);
+    
         Ok(Arc::new(Self {
             socket: Arc::new(socket),
             registry,
             event_sender,
+            origin: Arc::new(RwLock::new(origin)), // Wrap the origin in RwLock
         }))
     }
+   
     pub fn get_event_receiver(&self) -> broadcast::Receiver<MdnsEvent> {
         self.event_sender.subscribe() // Subscribe to the broadcast channel
     }
+   
     /// Registers a local service to the registry.
     pub async fn register_local_service(
         &self,
@@ -94,12 +100,12 @@ impl MdnsService {
             weight: Some(0),
         };
     
-        // Add the service to the registry
         self.registry
             .add_service(service.clone())
             .await
             .map_err(|e| MdnsError::Generic(e.to_string()))?;
-        
+    
+        // Optionally, notify via event
         let _ = self.event_sender.send(MdnsEvent::Discovered(DnsRecord::SRV {
             name: DnsName::new(&service.id).unwrap(),
             ttl: service.ttl.unwrap_or(120),
@@ -108,52 +114,64 @@ impl MdnsService {
             port: service.port,
             target: DnsName::new(&service.origin).unwrap(),
         }));
-        // Ensure the service's origin node is also in the node registry
-        self.add_node_to_registry(&origin, "127.0.0.1", ttl).await // Default IP for local service
+    
+        Ok(())
     }
+   
     /// Creates an mDNS advertisement packet from the service registry.
     pub async fn create_advertise_packet(&self) -> Result<DnsPacket, MdnsError> {
-        let services = self.registry.list_services().await;
+        let services = self.registry.list_services().await; // List all registered services
         let mut packet = DnsPacket::new();
-        packet.flags = 0x8400;
-
-        if services.is_empty() {
-            println!("(ADVERTISE) No local services to advertise.");
-            return Ok(packet);
-        }
-
-        // Retrieve the local IP dynamically
+        packet.flags = 0x8400; // Set response flags
+    
         let local_ip = get_local_ipv4()
             .ok_or_else(|| MdnsError::Generic("Failed to get local IP".to_string()))?;
-
-        for service in services {
-            println!("(ADVERTISE) Including service in packet: {:?}", service);
-
-            packet.answers.push(DnsRecord::PTR {
-                name: DnsName::new(&service.service_type).unwrap(),
-                ttl: service.ttl.unwrap_or(120),
-                ptr_name: DnsName::new(&service.id).unwrap(),
-            });
-
-            packet.answers.push(DnsRecord::SRV {
-                name: DnsName::new(&service.id).unwrap(),
-                ttl: service.ttl.unwrap_or(120),
-                priority: service.priority.unwrap_or(0),
-                weight: service.weight.unwrap_or(0),
-                port: service.port,
-                target: DnsName::new(&service.origin).unwrap(),
-            });
-
-            packet.answers.push(DnsRecord::A {
-                name: DnsName::new(&service.origin).unwrap(),
-                ttl: service.ttl.unwrap_or(120),
-                ip: local_ip.octets(),
-            });
+        let origin = {
+            let origin_lock = self.origin.read().await;
+            origin_lock
+                .as_ref()
+                .cloned()
+                .unwrap_or_else(|| "UnknownOrigin.local".to_string())
+        };
+    
+        if services.is_empty() {
+            println!("(ADVERTISE) No local services to advertise.");
+        } else {
+            for service in services {
+                println!("(ADVERTISE) Including service in packet: {:?}", service);
+    
+                packet.answers.push(DnsRecord::PTR {
+                    name: DnsName::new(&service.service_type).unwrap(),
+                    ttl: service.ttl.unwrap_or(120),
+                    ptr_name: DnsName::new(&service.id).unwrap(),
+                });
+    
+                packet.answers.push(DnsRecord::SRV {
+                    name: DnsName::new(&service.id).unwrap(),
+                    ttl: service.ttl.unwrap_or(120),
+                    priority: service.priority.unwrap_or(0),
+                    weight: service.weight.unwrap_or(0),
+                    port: service.port,
+                    target: DnsName::new(&origin).unwrap(),
+                });
+    
+                packet.answers.push(DnsRecord::A {
+                    name: DnsName::new(&service.origin).unwrap(),
+                    ttl: service.ttl.unwrap_or(120),
+                    ip: local_ip.octets(),
+                });
+            }
         }
-
+    
+        // Add a default A record for the node itself
+        packet.answers.push(DnsRecord::A {
+            name: DnsName::new(&origin).unwrap(),
+            ttl: 120,
+            ip: local_ip.octets(),
+        });
+    
         Ok(packet)
     }
-
 
     /// Sends an mDNS packet over the network.
     pub async fn send_packet(&self, packet: &DnsPacket) -> Result<(), MdnsError> {
@@ -197,6 +215,7 @@ impl MdnsService {
             }
         }
     }
+    
     /// Advertises all local services as unsolicited mDNS responses.
     pub async fn advertise_services(&self) -> Result<(), MdnsError> {
         let packet = self.create_advertise_packet().await?;
@@ -315,12 +334,17 @@ impl MdnsService {
     }
 
     /// Runs the mDNS service, spawning advertise, query, listen, and registry print tasks.
-    pub async fn run(self: Arc<Self>, service_type: String, query_interval: u64, advertise_interval: u64) {
-        let advertise_service = Arc::clone(&self);
-        let query_service = Arc::clone(&self);
-        let listen_service = Arc::clone(&self);
-        let registry_service = Arc::clone(&self);
-    
+    pub async fn run(
+        self: &Arc<Self>, // Borrow the Arc instead of consuming it
+        service_type: String,
+        query_interval: u64,
+        advertise_interval: u64,
+    ) {
+        let advertise_service = Arc::clone(self);
+        let query_service = Arc::clone(self);
+        let listen_service = Arc::clone(self);
+        let registry_service = Arc::clone(self);
+
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(advertise_interval)).await;
@@ -329,125 +353,112 @@ impl MdnsService {
                 }
             }
         });
-    
+
         tokio::spawn(async move {
-            query_service.periodic_query(&service_type, query_interval).await;
+            query_service
+                .periodic_query(&service_type, query_interval)
+                .await;
         });
-    
+
         tokio::spawn(async move {
             if let Err(err) = listen_service.listen().await {
                 eprintln!("(LISTEN) Error: {:?}", err);
             }
         });
-    
+
         tokio::spawn(async move {
             registry_service.print_node_registry().await;
         });
     }
-
+    
     async fn process_response(&self, packet: &DnsPacket, src: &SocketAddr) {
         println!("Packet : {:?}", packet);
-        if let SocketAddr::V4(_addr) = src {
+        
+        // Ensure the source address is IPv4
+        if let SocketAddr::V4(src_addr) = src {
             for answer in &packet.answers {
                 match answer {
                     DnsRecord::A { name, ip, ttl } => {
                         let ip_address = Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
-                        println!("(DISCOVERY) Discovered node: {} -> {}", name, ip_address);
+                        println!(
+                            "(DISCOVERY) Discovered node: {} -> {} <=> {}",
+                            name,
+                            ip_address,
+                            src_addr.ip() // Extract only the IP part of src_addr
+                        );
     
                         // Add or update the node in the registry
-                        let result = self
-                            .add_node_to_registry(&name.to_string(), &ip_address.to_string(), Some(*ttl))
-                            .await;
-    
-                        if let Err(e) = result {
+                        if let Err(e) = self
+                            .add_node_to_registry(&name.to_string(), &src_addr.ip().to_string(), Some(*ttl))
+                            .await
+                        {
                             eprintln!("(DISCOVERY) Failed to add node: {:?}", e);
                         }
+    
+                        // Optionally send discovery event
                         let _ = self.event_sender.send(MdnsEvent::Discovered(answer.clone()));
+                        
                         // Log the updated registry state
-                        let nodes = self.registry.list_nodes().await;
-                        println!("(REGISTRY) Current nodes: {:?}", nodes);
+                        let updated_nodes = self.registry.list_nodes().await;
+                        println!("(REGISTRY) Current nodes: {:?}", updated_nodes);
                     }
                     _ => {}
                 }
             }
         }
     }
-    
 
     async fn process_query(&self, packet: &DnsPacket, src: &SocketAddr) {
         for question in &packet.questions {
-            // println!("(QUERY) Received question: {:?}", question.qname);
-    
             if question.qtype == 12 && question.qclass == 1 {
-                // Join labels from the query to form the full service name
                 let requested_service = question.qname.labels.join(".");
-                // println!("Service : {:?}", requested_service);
-    
-                // Fetch all registered services
                 let services = self.registry.list_services().await;
-                // println!("Service list : {:?}", services);
     
-                // Find matching services by comparing IDs
                 let matching_services: Vec<_> = services
                     .into_iter()
                     .filter(|s| s.id.trim_end_matches('.').ends_with(&requested_service))
                     .collect();
-                // println!("Matching Service : {:?}", matching_services);
     
                 if matching_services.is_empty() {
                     println!("(QUERY) No matching service for '{}'", requested_service);
                     continue;
                 }
     
-                // Create response packet
                 let mut response_packet = DnsPacket::new();
-                response_packet.flags = 0x8400; // QR=1, AA=1
+                response_packet.flags = 0x8400;
+    
+                let origin = {
+                    let origin_lock = self.origin.read().await; // Acquire read lock
+                    origin_lock.clone().unwrap_or_else(|| "UnknownOrigin.local".to_string())
+                };
     
                 for service in matching_services {
-                    println!("(QUERY) Responding with service: {:?}", service);
-    
-                    // Add PTR record
                     response_packet.answers.push(DnsRecord::PTR {
                         name: DnsName::new(&service.service_type).unwrap(),
                         ttl: service.ttl.unwrap_or(120),
                         ptr_name: DnsName::new(&service.id).unwrap(),
                     });
     
-                    // Add SRV record
                     response_packet.answers.push(DnsRecord::SRV {
                         name: DnsName::new(&service.id).unwrap(),
                         ttl: service.ttl.unwrap_or(120),
                         priority: service.priority.unwrap_or(0),
                         weight: service.weight.unwrap_or(0),
                         port: service.port,
-                        target: DnsName::new(&service.origin).unwrap(),
+                        target: DnsName::new(&origin).unwrap(), // Use origin here
                     });
     
-                    // Add A record
                     if let SocketAddr::V4(addr) = src {
-                        let ip = addr.ip().octets();
                         response_packet.answers.push(DnsRecord::A {
-                            name: DnsName::new(&service.origin).unwrap(),
+                            name: DnsName::new(&origin).unwrap(), // Use origin here
                             ttl: service.ttl.unwrap_or(120),
-                            ip,
+                            ip: addr.ip().octets(),
                         });
-                    } else {
-                        eprintln!("(QUERY) Source address is not IPv4, skipping A record.");
                     }
                 }
     
-                // Send response packet
                 if let Err(err) = self.send_packet(&response_packet).await {
                     eprintln!("(QUERY->RESP) Failed to send response: {:?}", err);
-                } else {
-                    println!(
-                        "(QUERY->RESP) Sent response with {} answers.",
-                        response_packet.answers.len()
-                    );
-                    let _ = self.event_sender.send(MdnsEvent::QueryResponse {
-                        question: question.clone(),
-                        records: response_packet.answers.clone(),
-                    });
                 }
             }
         }
