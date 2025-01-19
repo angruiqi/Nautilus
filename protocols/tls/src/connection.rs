@@ -18,7 +18,7 @@ impl TlsConnection {
         mut stream: TcpStream,
         mut handshake: Handshake,
         state: Arc<Mutex<TlsState>>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // 1) Perform the handshake (Hello -> Kyber). Returns final step's Vec<u8> if any.
         let _final_bytes = handshake.execute(&mut stream).await?;
 

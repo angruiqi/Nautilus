@@ -24,7 +24,7 @@
 //
 // ================================================= Windows TSM Storage Imports ====================================================
 use crate::{KeyMetadata, KeyStorage};
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::Debug;
 use std::io::Write;
 use std::path::Path;
 use std::{fs, ptr};
@@ -33,6 +33,17 @@ use winapi::um::wincrypt::DATA_BLOB;
 // ================================================= Windows TSM Storage Imports ====================================================
 
 // ================================================= TSMStorage Struct =============================================================
+
+#[derive(Debug)]
+pub enum TSMStorageError {
+    EncryptionError(String),
+    DecryptionError(String),
+    IOError(String),
+    DeserializationError(String),
+    // Add more specific errors as needed
+}
+
+
 #[derive(Debug)]
 pub struct TSMStorage {
     storage_dir: String, // Directory for storing encrypted key files

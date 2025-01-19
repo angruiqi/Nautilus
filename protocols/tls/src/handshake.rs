@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use futures::future::BoxFuture;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
+use rand::Rng;
+use tokio::time::{sleep, Duration};
 // ----- Import Handshake traits -----
 use handshake::{HandshakeStream, HandshakeError, HandshakeStep};
 
@@ -24,6 +25,7 @@ use crate::tls_state::TlsState;
 
 #[derive(Debug, Clone, Copy)]
 pub enum HandshakeRole {
+    Unknown,
     Initiator,
     Responder,
 }
@@ -41,11 +43,9 @@ impl HelloStep {
         }
     }
 }
-
 #[async_trait]
 impl HandshakeStep for HelloStep {
     fn get_protocol_id(&self) -> &str {
-        // Must match the ID passed to Handshake::new("TLS_HANDSHAKE")
         &self.protocol_id
     }
 
@@ -60,52 +60,85 @@ impl HandshakeStep for HelloStep {
     ) -> BoxFuture<'a, Result<Vec<u8>, HandshakeError>> {
         Box::pin(async move {
             match self.role {
+                HandshakeRole::Unknown => {
+                    println!("[Unknown] Determining role...");
+
+                    let mut buf = [0u8; 5];
+                    match tokio::time::timeout(std::time::Duration::from_secs(3), stream.read_exact(&mut buf)).await {
+                        Ok(Ok(_)) if &buf == b"HELLO" => {
+                            println!("[Unknown] Detected simultaneous HELLO. Backing off...");
+
+                            // Introduce a randomized back-off before retrying
+                            let delay = rand::thread_rng().gen_range(100..500); // Random delay in milliseconds
+                            sleep(Duration::from_millis(delay)).await;
+
+                            println!("[Unknown] Retrying role determination...");
+                            self.role = HandshakeRole::Unknown;
+                            self.execute(stream, vec![]).await
+                        }
+                        Err(_) => {
+                            println!("[Unknown] Acting as Initiator (timeout)");
+                            self.role = HandshakeRole::Initiator;
+                            self.execute(stream, vec![]).await
+                        }
+                        Ok(Err(e)) => {
+                            return Err(HandshakeError::Generic(format!("Error determining role: {e}")));
+                        }
+                        _ => Err(HandshakeError::Generic("Unknown role detection error".to_string())),
+                    }
+                }
+
                 HandshakeRole::Initiator => {
-                    // --- Initiator sends "HELLO" ---
                     println!("[Initiator] Sending HELLO");
+            
+                    let delay = rand::thread_rng().gen_range(100..500); // Random delay in milliseconds
+                    sleep(Duration::from_millis(delay)).await;
+            
                     stream.write_all(b"HELLO").await.map_err(|e| {
                         HandshakeError::Generic(format!("Failed to send HELLO: {e}"))
                     })?;
-
-                    // --- Wait for "HELLO_ACK" ---
+            
                     println!("[Initiator] Waiting for HELLO_ACK");
                     let mut buf = [0u8; 9];
                     stream.read_exact(&mut buf).await.map_err(|e| {
                         HandshakeError::Generic(format!("Failed to read HELLO_ACK: {e}"))
                     })?;
-
+            
                     if &buf != b"HELLO_ACK" {
-                        return Err(HandshakeError::Generic(
-                            "Invalid HELLO_ACK response".to_string(),
-                        ));
+                        return Err(HandshakeError::Generic("Invalid HELLO_ACK response".to_string()));
                     }
                     println!("[Initiator] Received HELLO_ACK");
-
-                    // Return an empty Vec<u8>; we won’t send a fake AES key here
+            
                     Ok(vec![])
                 }
 
                 HandshakeRole::Responder => {
-                    // --- Responder waits for "HELLO" ---
                     println!("[Responder] Waiting for HELLO");
                     let mut buf = [0u8; 5];
                     stream.read_exact(&mut buf).await.map_err(|e| {
                         HandshakeError::Generic(format!("Failed to read HELLO: {e}"))
                     })?;
 
-                    if &buf != b"HELLO" {
-                        return Err(HandshakeError::Generic("Invalid HELLO".to_string()));
+                    if &buf == b"HELLO" {
+                        println!("[Responder] Detected simultaneous HELLO. Backing off...");
+                        
+                        // Randomized delay before retrying
+                        let delay = rand::thread_rng().gen_range(100..500);
+                        sleep(Duration::from_millis(delay)).await;
+                        
+                        println!("[Responder] Retrying role determination...");
+                        self.role = HandshakeRole::Unknown;
+                        self.execute(stream, vec![]).await
+                    } else {
+                        println!("[Responder] Received HELLO");
+
+                        println!("[Responder] Sending HELLO_ACK");
+                        stream.write_all(b"HELLO_ACK").await.map_err(|e| {
+                            HandshakeError::Generic(format!("Failed to send HELLO_ACK: {e}"))
+                        })?;
+
+                        Ok(vec![])
                     }
-                    println!("[Responder] Received HELLO");
-
-                    // --- Send "HELLO_ACK" back ---
-                    println!("[Responder] Sending HELLO_ACK");
-                    stream.write_all(b"HELLO_ACK").await.map_err(|e| {
-                        HandshakeError::Generic(format!("Failed to send HELLO_ACK: {e}"))
-                    })?;
-
-                    // Also return an empty Vec<u8>
-                    Ok(vec![])
                 }
             }
         })
@@ -292,6 +325,9 @@ impl HandshakeStep for KyberExchangeStep {
                     println!("[Responder] Shared key established");
                     Ok(vec![])
                 }
+                HandshakeRole::Unknown => {
+                    return Err(HandshakeError::Generic("Handshake role not set correctly".to_string()));
+                }
             }
         })
     }
@@ -339,6 +375,9 @@ impl HandshakeStep for FinishStep {
                     // Writes "OK"
                     stream.write_all(b"OK").await
                         .map_err(|e| HandshakeError::Generic(format!("FinishStep write: {e}")))?;
+                }
+                HandshakeRole::Unknown => {
+                    return Err(HandshakeError::Generic("FinishStep cannot proceed with Unknown role".to_string()));
                 }
             }
             // Return the same input for consistency
