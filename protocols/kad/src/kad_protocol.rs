@@ -11,7 +11,7 @@ use crate::behaviour::{LearningBehaviour, MaintenanceBehaviour};
 
 pub struct KadProtocol {
     pub local_node: Node,
-    connection: Arc<Mutex<UdpConnection>>,
+    pub connection: Arc<Mutex<UdpConnection>>,
     pub routing_table: Arc<Mutex<RoutingTable>>,
     learning_behaviour: LearningBehaviour,
     maintenance_behaviour: MaintenanceBehaviour,
@@ -32,7 +32,7 @@ impl KadProtocol {
 
     pub async fn bind(&self, address: &str) -> Result<(), String> {
         let conn = self.connection.clone();
-        let mut conn_lock = conn.lock().await;
+        let conn_lock = conn.lock().await;
         conn_lock
             .bind(address)
             .await
@@ -45,7 +45,7 @@ impl KadProtocol {
         let message = KadMessage::new(MessageType::Ping, self.local_node.id, None);
 
         let conn = self.connection.clone();
-        let mut conn_lock = conn.lock().await;
+        let conn_lock = conn.lock().await;
         conn_lock
             .send_to(&message.serialize(), &target.address.to_string())
             .await
@@ -82,7 +82,7 @@ impl KadProtocol {
         );
     
         let conn = self.connection.clone();
-        let mut conn_lock = conn.lock().await;
+        let conn_lock = conn.lock().await;
     
         // Send FIND_NODE message to the target node
         println!("Sending FIND_NODE to {:?}", node.address);
@@ -181,7 +181,7 @@ pub async fn query_find_node_and_learn(
     );
 
     let conn = self.connection.clone();
-    let mut conn_lock = conn.lock().await;
+    let conn_lock = conn.lock().await;
 
     // Send FIND_NODE message to the target node
     conn_lock
@@ -260,7 +260,7 @@ pub async fn iterative_find_and_learn(&self, target_id: NodeId) -> Vec<Node> {
         let conn = self.connection.clone();
     
         loop {
-            let mut conn_lock = conn.lock().await;
+            let conn_lock = conn.lock().await;
             if let Ok((message, sender)) = conn_lock.receive_from().await {
                 if let Ok(kad_message) = KadMessage::deserialize(&message) {
                     match kad_message.message_type {

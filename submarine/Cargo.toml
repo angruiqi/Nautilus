@@ -13,3 +13,7 @@ hex = "0.4.3"
 
 mdns = { path = "../protocols/mdns" }
 kad = { path = "../protocols/kad" }
+tls = {path = "../protocols/tls"}
+udp = {path = "../transport/udp"}
+tcp = {path = "../transport/tcp"}
+nautilus_core = {path = "../core"}

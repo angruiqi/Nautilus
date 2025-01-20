@@ -27,7 +27,7 @@ impl Bootstrapper {
         if self.is_bootstrap_node {
             println!("Operating as a bootstrap node.");
             let kad = self.kad.clone();
-            let mut kad_protocol = kad.lock().await;
+            let kad_protocol = kad.lock().await;
             kad_protocol.add_node(kad_protocol.local_node.clone()).await;
             return;
         }
@@ -38,7 +38,7 @@ impl Bootstrapper {
                 bootstrap_node
             );
             let kad = self.kad.clone();
-            let mut kad_protocol = kad.lock().await;
+            let kad_protocol = kad.lock().await;
             kad_protocol.add_node(bootstrap_node.clone()).await;
 
             // Try a FIND_NODE to populate the routing table

@@ -3114,8 +3114,12 @@ dependencies = [
  "kad",
  "log",
  "mdns",
+ "nautilus_core",
  "serde",
+ "tcp",
+ "tls",
  "tokio",
+ "udp",
 ]
 
 [[package]]

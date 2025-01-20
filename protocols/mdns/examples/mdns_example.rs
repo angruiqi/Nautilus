@@ -1,76 +1,42 @@
 use mdns::MdnsService;
-use tokio::{signal, spawn};
 use std::sync::Arc;
+use tokio::{signal, spawn};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize the mDNS service
-    let mdns_service = MdnsService::new(Some("MyRedHat.local".to_string())).await?;
+    // Create the mDNS service with "MyLaptop.local" as the node's origin
+    // and "_mdnsnode._tcp.local." as the compulsory default service type.
+    let mdns_service = MdnsService::new(
+        Some("MyLaptop.local".to_string()),
+        "_mdnsnode._tcp.local.",
+    ).await?;
+
     let mdns_service = Arc::new(mdns_service);
 
-    // Register a local service
-    mdns_service
-        .register_local_service(
-            "_myservice._http._tcp.local.".to_string(),
-            "_myservice._http._tcp.local.".to_string(),
-            8080,
-            Some(120),
-            "MyRedHat.local.".to_string(),
-        )
-        .await?;
 
-    println!("Local service registered.");
-
-    // Clone the service for the `run` task
-    let mdns_service_clone = Arc::clone(&mdns_service);
+    // Start the main mDNS tasks:
+    let mdns_clone = Arc::clone(&mdns_service);
     spawn(async move {
-        mdns_service_clone
-            .run("_myservice._http._tcp.local.".to_string(), 5, 10)
-            .await;
+        // We'll query for "_myservice._http._tcp.local." every 5s
+        // and advertise every 10s
+        mdns_clone.run("_myservice._http._tcp.local.".to_string(), 5, 10).await;
     });
 
-    // Clone for the event handling task
-    let mdns_service_clone = Arc::clone(&mdns_service);
+    // Grab events
+    let mut receiver = mdns_service.get_event_receiver();
     spawn(async move {
-        let mut event_receiver = mdns_service_clone.get_event_receiver();
-        while let Ok(event) = event_receiver.recv().await {
-            match event {
-                mdns::MdnsEvent::Discovered(record) => {
-                    println!("(EVENT) Discovered: {:?}", record);
-                }
-                mdns::MdnsEvent::Updated(record) => {
-                    println!("(EVENT) Updated: {:?}", record);
-                }
-                mdns::MdnsEvent::Expired(record) => {
-                    println!("(EVENT) Expired: {:?}", record);
-                }
-                mdns::MdnsEvent::QueryResponse { question, records } => {
-                    println!(
-                        "(EVENT) QueryResponse - Question: {:?}, Records: {:?}",
-                        question, records
-                    );
-                }
-                mdns::MdnsEvent::AnnouncementSent { record } => {
-                    println!("(EVENT) AnnouncementSent: {:?}", record);
-                }
-            }
+        while let Ok(event) = receiver.recv().await {
+            println!("(EVENT) => {:?}", event);
         }
     });
 
-    // Wait for shutdown signal
+    // Wait for Ctrl-C
     signal::ctrl_c().await?;
-    println!("(MAIN) Shutdown signal received. Exiting...");
+    println!("(MAIN) Shutdown signal received.");
 
-    // Retrieve and print discovered nodes before exiting
+    // Print out final discovered nodes
     let nodes = mdns_service.registry.list_nodes().await;
-    if nodes.is_empty() {
-        println!("No nodes discovered.");
-    } else {
-        println!("Discovered nodes:");
-        for node in nodes {
-            println!("{:?}", node);
-        }
-    }
+    println!("Discovered nodes: {:?}", nodes);
 
     Ok(())
 }

@@ -4,7 +4,6 @@ use crate::routing_table::RoutingTable;
 use crate::kad_protocol::KadProtocol; // Import KadProtocol for interaction
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use std::pin::Pin;
 /// Handles learning and managing nodes within the routing table.
 pub struct LearningBehaviour {
   routing_table: Arc<Mutex<RoutingTable>>,
