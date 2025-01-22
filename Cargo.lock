@@ -3178,6 +3178,7 @@ dependencies = [
  "futures",
  "handshake",
  "nautilus_core",
+ "socket2",
  "tls",
  "tokio",
 ]

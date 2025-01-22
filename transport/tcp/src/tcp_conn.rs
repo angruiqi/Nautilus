@@ -6,7 +6,7 @@ use nautilus_core::connection::{Connection, ConnectionError,Transport,TransportL
 use nautilus_core::event_bus::EventBus;
 use std::sync::Arc;
 use crate::tcp_events::TcpEvent;
-
+use socket2::Socket;
 #[cfg(feature="framing")]
 use nautilus_core::connection::framing::{Framing,FramingError};
 
@@ -232,23 +232,49 @@ impl Connection for TcpConnection {
     type Error = ConnectionError;
 
     async fn connect(&mut self, addr: &str) -> Result<(), Self::Error> {
-        match TcpStream::connect(addr).await {
-            Ok(stream) => {
-                self.stream = Some(stream);
-                self.publish_conn_event(ConnectionEvent::Connected { peer: addr.to_string() }).await;
-                Ok(())
-            }
-            Err(e) => {
-                self.publish_conn_event(ConnectionEvent::Error {
-                    peer: addr.to_string(),
-                    error: e.to_string(),
-                })
-                .await;
-                Err(ConnectionError::ConnectionFailed(e.to_string()))
+        let mut retry_attempts = 0;
+        const MAX_RETRIES: u8 = 5;
+        let retry_interval = std::time::Duration::from_secs(2);
+    
+        loop {
+            match TcpStream::connect(addr).await {
+                Ok(stream) => {
+                    // Convert Tokio TcpStream to std::net::TcpStream
+                    let std_stream = stream.into_std().map_err(|e| ConnectionError::ConnectionFailed(e.to_string()))?;
+    
+                    // Use socket2 to enable TCP keep-alive
+                    let socket = Socket::from(std_stream);
+                    socket.set_keepalive(Some(std::time::Duration::from_secs(60)).is_some())
+                        .map_err(|e| ConnectionError::ConnectionFailed(e.to_string()))?;
+    
+                    // Convert back to Tokio TcpStream
+                    let std_stream: std::net::TcpStream = socket.into();
+                    std_stream.set_nonblocking(true).map_err(|e| ConnectionError::ConnectionFailed(e.to_string()))?;
+                    self.stream = Some(TcpStream::from_std(std_stream).map_err(|e| ConnectionError::ConnectionFailed(e.to_string()))?);
+    
+                    self.publish_conn_event(ConnectionEvent::Connected { peer: addr.to_string() }).await;
+                    println!("Connected successfully!");
+                    return Ok(());
+                }
+                Err(e) => {
+                    if retry_attempts < MAX_RETRIES {
+                        println!("Connection failed: {}. Retrying {}/{}", e, retry_attempts + 1, MAX_RETRIES);
+                        retry_attempts += 1;
+                        tokio::time::sleep(retry_interval).await;
+                    } else {
+                        self.publish_conn_event(ConnectionEvent::Error {
+                            peer: addr.to_string(),
+                            error: e.to_string(),
+                        }).await;
+                        println!("Max retries reached. Giving up on connection.");
+                        return Err(ConnectionError::ConnectionFailed(e.to_string()));
+                    }
+                }
             }
         }
     }
-
+    
+    
     async fn disconnect(&mut self) -> Result<(), Self::Error> {
         if let Some(stream) = self.stream.take() {
             let peer = stream.peer_addr().unwrap().to_string();
@@ -258,62 +284,55 @@ impl Connection for TcpConnection {
     }
 
     async fn send(&mut self, data: &[u8]) -> Result<(), Self::Error> {
-        if let Some(ref mut stream) = self.stream {
-            // Clone the peer address to avoid conflicts
+        if let Some(mut stream) = self.stream.take() {
             let peer = stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_default();
     
-            // Attempt to write data
             if let Err(e) = stream.write_all(data).await {
-                self.publish_conn_event(ConnectionEvent::Error {
-                    peer: peer.clone(),
-                    error: e.to_string(),
-                })
-                .await;
-                return Err(ConnectionError::SendFailed(e.to_string()));
+                self.publish_conn_event(ConnectionEvent::Error { peer: peer.clone(), error: e.to_string() }).await;
+                println!("Send failed. Retrying...");
+                
+                self.connect(&peer).await?;
+                stream = self.stream.take().unwrap(); // Retrieve new stream after reconnection
+                
+                stream.write_all(data).await.map_err(|_| ConnectionError::SendFailed("Retry failed".to_string()))?;
             }
     
-            // Publish the data sent event
-            self.publish_tcp_event(TcpEvent::DataSent {
-                peer,
-                data: data.to_vec(),
-            })
-            .await;
-    
+            self.stream = Some(stream); // Return the stream back to struct
+            self.publish_tcp_event(TcpEvent::DataSent { peer, data: data.to_vec() }).await;
             Ok(())
         } else {
             Err(ConnectionError::SendFailed("No active connection".to_string()))
         }
     }
-
     async fn receive(&mut self) -> Result<Vec<u8>, Self::Error> {
         let mut buf = vec![0u8; 1024];
-        if let Some(ref mut stream) = self.stream {
-            // Clone peer address to avoid conflicting borrows
+    
+        if let Some(mut stream) = self.stream.take() {
             let peer = stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_default();
     
-            // Attempt to read data
-            let n = match stream.read(&mut buf).await {
-                Ok(n) => n,
-                Err(e) => {
-                    self.publish_conn_event(ConnectionEvent::Error {
-                        peer: peer.clone(),
-                        error: e.to_string(),
-                    })
-                    .await;
-                    return Err(ConnectionError::ReceiveFailed(e.to_string()));
+            loop {
+                match stream.read(&mut buf).await {
+                    Ok(0) => {
+                        println!("Connection closed by peer. Attempting reconnection...");
+                        self.stream = Some(stream); // Restore stream before calling connect
+                        self.connect(&peer.clone()).await?;
+                        return Err(ConnectionError::ReceiveFailed("Peer disconnected".to_string()));
+                    }
+                    Ok(n) => {
+                        buf.truncate(n);
+                        self.publish_tcp_event(TcpEvent::DataReceived { peer: peer.clone(), data: buf.clone() }).await;
+                        self.stream = Some(stream);
+                        return Ok(buf);
+                    }
+                    Err(e) => {
+                        self.stream = Some(stream); // Restore stream before logging error
+                        self.publish_conn_event(ConnectionEvent::Error { peer: peer.clone(), error: e.to_string() }).await;
+                        println!("Error receiving data: {}, retrying...", e);
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    }
                 }
-            };
-    
-            buf.truncate(n);
-    
-            // Publish the data received event
-            self.publish_tcp_event(TcpEvent::DataReceived {
-                peer,
-                data: buf.clone(),
-            })
-            .await;
-    
-            Ok(buf)
+                stream = self.stream.take().unwrap(); // Retrieve stream for next loop iteration
+            }
         } else {
             Err(ConnectionError::ReceiveFailed("No active connection".to_string()))
         }
