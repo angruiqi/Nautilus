@@ -6,8 +6,7 @@ use crate::{PKIError, PKITraits};
 #[cfg(feature = "falcon")]
 use pqcrypto_falcon::falcon512::*;
 #[cfg(feature = "falcon")]
-use pqcrypto_traits::sign::{DetachedSignature, PublicKey as PublicKeyTrait};
-
+use pqcrypto_traits::sign::{DetachedSignature, PublicKey as PublicKeyTrait,SecretKey as SecretKeyTrait};
 // ======================= Falcon Key Pair Definition =======================
 #[cfg(feature = "falcon")]
 #[derive(Clone)]
@@ -57,6 +56,12 @@ impl PKITraits for FalconKeyPair {
         "Falcon".to_string()
     }
 }
-
-// ======================= Future Enhancements =======================
+// ================== Additional Methods ======================================
+#[cfg(feature = "falcon")]
+impl FalconKeyPair {
+    pub fn private_key_raw_bytes(&self) -> Vec<u8> {
+        SecretKey::as_bytes(&self.secret_key).to_vec()
+    }
+}
+// ======================= Future Enhancements =================================
 // Additional features such as key serialization and deserialization can be implemented here if required.

@@ -30,11 +30,11 @@ impl VerifiableCredential {
             type_: type_.unwrap_or_else(|| vec!["VerifiableCredential".to_string()]),
             credential_subject: HashMap::new(),
             proof: Proof {
-                type_: proof_type.unwrap_or_else(|| "EcdsaSignature2019".to_string()),
+                type_: proof_type.unwrap_or_else(|| "Ed25519Signature2020".to_string()), // Update to match supported types
                 created: "".to_string(),
                 proof_value: "".to_string(),
                 verification_method: "".to_string(),
-            },
+            }
         }
     }
 

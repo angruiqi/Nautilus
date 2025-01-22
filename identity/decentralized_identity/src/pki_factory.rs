@@ -128,23 +128,14 @@ impl PKI {
             PKI::RSA(rsa_keypair) => rsa_keypair.private_key_raw_bytes(),
     
             #[cfg(feature = "dilithium")]
-            PKI::Dilithium(_) => {
-                // Handle Dilithium-specific behavior if needed
-                vec![]
-            },
+            PKI::Dilithium(dilithium_keypair) => dilithium_keypair.private_key_raw_bytes(),
     
             #[cfg(feature = "falcon")]
-            PKI::Falcon(_) => {
-                // Handle Falcon-specific behavior if needed
-                vec![]
-            },
+            PKI::Falcon(falcon_keypair) => falcon_keypair.private_key_raw_bytes(),
     
             #[cfg(feature = "ed25519")]
-            PKI::Ed25519(_) => {
-                // Handle Ed25519-specific behavior if needed
-                vec![]
-            },
-    
+            PKI::Ed25519(ed25519_keypair) => ed25519_keypair.private_key_raw_bytes(),
+
             // Fallback for any unsupported or excluded variants
             #[cfg(not(any(feature = "pki_rsa", feature = "dilithium", feature = "falcon", feature = "ed25519")))]
             _ => vec![], // Return empty vector or handle unsupported case

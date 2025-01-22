@@ -172,7 +172,8 @@ impl crate::KeySerialization for RSAkeyPair {
         })
     }
 }
-// ================== In Development ======================================
+// ================== Additional Methods ======================================
+#[cfg(feature = "pki_rsa")]
 impl RSAkeyPair{
         /// Returns the private key in raw byte format
         pub fn private_key_raw_bytes(&self) -> Vec<u8> {

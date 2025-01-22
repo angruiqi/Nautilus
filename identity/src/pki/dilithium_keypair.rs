@@ -129,3 +129,12 @@ impl crate::KeySerialization for DilithiumKeyPair {
         })
     }
 }
+
+// ================== Additional Methods ======================================
+#[cfg(feature = "dilithium")]
+impl DilithiumKeyPair {
+    /// Retrieves the private key as raw bytes.
+    pub fn private_key_raw_bytes(&self) -> Vec<u8> {
+        self.private_key.clone().into_bytes().to_vec()
+    }
+}

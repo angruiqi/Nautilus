@@ -160,3 +160,11 @@ impl crate::KeySerialization for Ed25519KeyPair {
         })
     }
 }
+
+// ================== Additional Methods ======================================
+#[cfg(feature = "ed25519")]
+impl Ed25519KeyPair {
+    pub fn private_key_raw_bytes(&self) -> Vec<u8>{
+        self.signing_key.clone().to_bytes().to_vec()
+    }
+}

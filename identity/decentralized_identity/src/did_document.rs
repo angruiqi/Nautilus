@@ -1,4 +1,4 @@
-use crate::{DIDDocument, VerifiableCredential, PublicKey, Proof};
+use crate::{DIDDocument, VerifiableCredential, PublicKey, Proof,KeyManager,IdentityError};
 use serde::{Serialize,Deserialize};
 use serde_json;
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -21,10 +21,9 @@ impl UserDocument {
         self.credentials.push(credential);
     }
 
-    pub fn get_public_key_raw_bytes(&self) -> Vec<u8> {
-        self.verifying_key.public_key_base64.clone().into_bytes()
+    pub fn get_public_key_raw_bytes(&self) -> Result<Vec<u8>, IdentityError> {
+        KeyManager::decode_key_from_base64(&self.verifying_key.public_key_base64)
     }
-
     pub fn get_did_document(&self) -> &DIDDocument {
         &self.did_document
     }
