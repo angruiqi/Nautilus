@@ -1,120 +1,82 @@
-// protocols\tls\src\tls_session.rs
-use tokio::net::{TcpStream,TcpListener};
-use std::sync::{Arc, Mutex};
-use crate::{TlsConnection, TlsState, HelloStep, HandshakeRole, KyberExchangeStep, FinishStep};
+use tokio::net::{TcpStream, TcpListener};
+use tokio::sync::Mutex; // <-- Use tokio's Mutex for TlsState
+use std::sync::Arc;
+
+use crate::{
+    TlsConnection, 
+    TlsState, 
+    HelloStep, 
+    HandshakeRole, 
+    KyberExchangeStep, 
+    FinishStep
+};
 use handshake::Handshake;
 use nautilus_core::connection::Connection;
 use std::time::Duration;
 use tokio::time::timeout;
 
+#[derive(Clone)]
 pub struct TlsSession {
     connection: TlsConnection,
 }
 
 impl TlsSession {
-  pub async fn new(
-    socket: TcpStream, 
-    role: HandshakeRole
-) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-    let state = Arc::new(Mutex::new(TlsState::default()));
+    /// Create a new TlsSession in either Initiator or Responder role
+    pub async fn new(
+        socket: TcpStream,
+        role: HandshakeRole,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        // Make sure we also use tokio::sync::Mutex for TlsState
+        let state = Arc::new(Mutex::new(TlsState::default()));
 
-    let mut handshake = Handshake::new("TLS_HANDSHAKE");
+        let mut handshake = Handshake::new("TLS_HANDSHAKE");
+        let hello_step = HelloStep::new("TLS_HANDSHAKE", role);
+        let kyber_step = KyberExchangeStep::new(role, state.clone());
+        handshake.add_step(Box::new(hello_step));
+        handshake.add_step(Box::new(kyber_step));
+        handshake.add_step(Box::new(FinishStep { role }));
 
-    let hello_step = HelloStep::new("TLS_HANDSHAKE", role);
-    let kyber_step = KyberExchangeStep::new(role, state.clone());
+        // Build TlsConnection, which does the handshake
+        let connection = TlsConnection::new(socket, handshake, state).await?;
 
-    handshake.add_step(Box::new(hello_step));
-    handshake.add_step(Box::new(kyber_step));
-    handshake.add_step(Box::new(FinishStep { role }));
+        println!("[Session] Secure connection established for {:?}", role);
+        Ok(Self { connection })
+    }
 
-    let connection = TlsConnection::new(socket, handshake, state)
-    .await
-    .map_err(|e| Box::<dyn std::error::Error + Send + Sync>::from(e))?;
+    pub async fn send(&mut self, message: &[u8]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.connection.send(message).await?;
+        Ok(())
+    }
 
-    println!("[Session] Secure connection established for {:?}", role);
-
-    Ok(Self { connection })
+    pub async fn receive(&mut self) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+        self.connection.receive().await.map_err(Into::into)
+    }
 }
 
-pub async fn send(&mut self, message: &[u8]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    self.connection.send(message).await?;
-    Ok(())
-}
+/// Optional: An “adaptive” approach that tries to accept first (Responder),
+/// or else tries to connect (Initiator).
+pub async fn adaptive_session(
+    address: &str,
+) -> Result<TlsSession, Box<dyn std::error::Error + Send + Sync>> {
+    let listener = TcpListener::bind(address).await?;
+    println!("[Adaptive Session] Listening on {}", address);
 
-pub async fn receive(&mut self) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
-    let message = self.connection.receive().await?;
-    Ok(message)
-}
-}
+    // Wait up to 2 seconds for a client to connect
+    let accept_future = listener.accept();
 
-
-
-pub struct AdaptiveTlsSession {
-  connection: TlsConnection,
-}
-
-impl AdaptiveTlsSession {
-  /// Create a new Adaptive TLS Session
-  pub async fn new(address: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-      let state = Arc::new(Mutex::new(TlsState::default()));
-
-      let listener = TcpListener::bind(address).await?;
-      
-      println!("[Adaptive Session] Listening for incoming connection on {}", address);
-
-      let accept_future = listener.accept();
-      
-      // Set a timeout to determine if the session should initiate or accept
-      match timeout(Duration::from_secs(2), accept_future).await {
+    match timeout(Duration::from_secs(2), accept_future).await {
         Ok(Ok((socket, _))) => {
-            println!("[Adaptive Session] Acting as Responder");
-            Self::setup_session(socket, HandshakeRole::Responder, state).await
+            println!("[Adaptive Session] => Acting as Responder");
+            TlsSession::new(socket, HandshakeRole::Responder).await
         }
         Ok(Err(e)) => {
-            println!("[Adaptive Session] Listener error: {}", e);
+            println!("[Adaptive Session] => accept error: {}", e);
             Err(Box::new(e))
         }
         Err(_) => {
-            println!("[Adaptive Session] Acting as Initiator");
+            println!("[Adaptive Session] => Acting as Initiator");
             let socket = TcpStream::connect(address).await?;
-            Self::setup_session(socket, HandshakeRole::Initiator, state).await
+            TlsSession::new(socket, HandshakeRole::Initiator).await
         }
     }
-  }
-
-  /// Setup the TLS session based on role
-  async fn setup_session(
-      socket: TcpStream,
-      role: HandshakeRole,
-      state: Arc<Mutex<TlsState>>,
-  ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-      let mut handshake = Handshake::new("TLS_HANDSHAKE");
-
-      let hello_step = HelloStep::new("TLS_HANDSHAKE", role);
-      let kyber_step = KyberExchangeStep::new(role, state.clone());
-
-      handshake.add_step(Box::new(hello_step));
-      handshake.add_step(Box::new(kyber_step));
-      handshake.add_step(Box::new(FinishStep { role }));
-
-      let connection = TlsConnection::new(socket, handshake, state)
-          .await
-          .map_err(|e| Box::<dyn std::error::Error + Send + Sync>::from(e))?;
-
-      println!("[Adaptive Session] Secure connection established as {:?}", role);
-
-      Ok(Self { connection })
-  }
-
-  /// Send data over the TLS session
-  pub async fn send(&mut self, message: &[u8]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-      self.connection.send(message).await?;
-      Ok(())
-  }
-
-  /// Receive data over the TLS session
-  pub async fn receive(&mut self) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
-      let message = self.connection.receive().await?;
-      Ok(message)
-  }
 }

@@ -1,16 +1,7 @@
 use kad::{bootstrap::Bootstrapper, kad_protocol::KadProtocol, node::Node};
-use std::net::{SocketAddr, TcpListener};
+use std::net::SocketAddr;
 use kad::utils::generate_random_node_id;
 use tokio::signal;
-
-/// Helper function to get an unused port
-fn get_unused_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
 
 /// Function to spawn a bootstrap service
 pub async fn spawn_bootstrap_service() -> (Node, tokio::task::JoinHandle<()>) {

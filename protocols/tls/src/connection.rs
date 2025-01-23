@@ -1,39 +1,44 @@
-// protocols\tls\src\connection.rs
 use tokio::net::TcpStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use async_trait::async_trait;
-use std::sync::{Arc, Mutex};
+use tokio::sync::Mutex;   // <-- Use tokio's Mutex for async
+use std::sync::Arc;
 
 use crate::record::{TlsRecord, RecordType, RecordError};
 use crate::tls_state::TlsState;
 use handshake::Handshake;
 use nautilus_core::connection::Connection;
 
+#[derive(Clone)]
 pub struct TlsConnection {
-    inner: TcpStream,
+    // Store TcpStream in Arc<Mutex<...>> so we can clone and share it.
+    inner: Arc<Mutex<TcpStream>>,
+    // Store TlsState in Arc<Mutex<...>> as well, using *tokio*'s Mutex.
     state: Arc<Mutex<TlsState>>,
 }
 
 impl TlsConnection {
     pub async fn new(
-        mut stream: TcpStream,
+        mut raw_stream: TcpStream,
         mut handshake: Handshake,
         state: Arc<Mutex<TlsState>>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // 1) Perform the handshake (Hello -> Kyber). Returns final step's Vec<u8> if any.
-        let _final_bytes = handshake.execute(&mut stream).await?;
+        // 1. Perform the handshake
+        handshake.execute(&mut raw_stream).await?;
 
-        // 2) Optionally mark handshake complete
+        // 2. Mark handshake complete
         {
-            let mut st = state.lock().map_err(|_| "Mutex Poisoned")?;
+            // tokio::sync::Mutex never returns a poison error, so just .await:
+            let mut st = state.lock().await;
             st.set_handshake_complete(true);
         }
 
-        // 3) Return TlsConnection
-        Ok(Self {
-            inner: stream,
+        // 3. Wrap the final stream in Arc<Mutex<...>>
+        let connection = Self {
+            inner: Arc::new(Mutex::new(raw_stream)),
             state,
-        })
+        };
+        Ok(connection)
     }
 }
 
@@ -42,49 +47,71 @@ impl Connection for TlsConnection {
     type Error = RecordError;
 
     async fn connect(&mut self, addr: &str) -> Result<(), Self::Error> {
-        self.inner = TcpStream::connect(addr)
+        // Lock and replace the underlying stream
+        let mut locked_stream = self.inner.lock().await;
+        *locked_stream = TcpStream::connect(addr)
             .await
             .map_err(|_| RecordError::WriteError)?;
         Ok(())
     }
 
     async fn disconnect(&mut self) -> Result<(), Self::Error> {
-        self.inner.shutdown()
+        let mut locked_stream = self.inner.lock().await;
+        locked_stream
+            .shutdown()
             .await
             .map_err(|_| RecordError::WriteError)?;
         Ok(())
     }
 
     async fn send(&mut self, data: &[u8]) -> Result<(), Self::Error> {
+        // 1. Get session key
         let session_key = {
-            let st = self.state.lock().map_err(|_| RecordError::WriteError)?;
+            let st = self.state.lock().await;
             st.session_key().to_vec()
         };
 
+        // 2. Encrypt into TlsRecord
         let mut record = TlsRecord::new(RecordType::ApplicationData, data.to_vec());
         record.encrypt(&session_key)?;
-        self.inner.write_all(&record.serialize())
+
+        // 3. Lock stream and write
+        let mut locked_stream = self.inner.lock().await;
+        locked_stream
+            .write_all(&record.serialize())
             .await
             .map_err(|_| RecordError::WriteError)?;
         Ok(())
     }
 
     async fn receive(&mut self) -> Result<Vec<u8>, Self::Error> {
+        // 1. Get session key
         let session_key = {
-            let st = self.state.lock().map_err(|_| RecordError::ReadError)?;
+            let st = self.state.lock().await;
             st.session_key().to_vec()
         };
 
+        // 2. Lock stream and read
+        let mut locked_stream = self.inner.lock().await;
         let mut buf = vec![0u8; 4096];
-        let n = self.inner.read(&mut buf)
+        let n = locked_stream
+            .read(&mut buf)
             .await
             .map_err(|_| RecordError::ReadError)?;
+
+        // 3. Deserialize & decrypt
         let mut record = TlsRecord::deserialize(&buf[..n])?;
         let payload = record.decrypt(&session_key)?;
         Ok(payload)
     }
 
     fn is_connected(&self) -> bool {
-        self.inner.peer_addr().is_ok()
+        // This is a best-effort check
+        if let Ok(locked_stream) = self.inner.try_lock() {
+            locked_stream.peer_addr().is_ok()
+        } else {
+            // If we can't lock (someone else holds it), we assume connected
+            true
+        }
     }
 }

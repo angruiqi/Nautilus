@@ -9,4 +9,4 @@ pub use connection::TlsConnection;
 pub use record::{TlsRecord, RecordType, RecordError};
 pub use tls_state::TlsState;
 pub use handshake::{HelloStep,CipherSuiteStep,HandshakeRole,KyberExchangeStep,FinishStep};
-pub use tls_session::{TlsSession,AdaptiveTlsSession};
+pub use tls_session::{TlsSession,adaptive_session};
