@@ -1,61 +1,49 @@
-# Nautilus
+# 🐚 Nautilus
 
-Nautilus is a Rust-based framework for developing decentralized networks and secure communication systems. It emphasizes modularity, scalability, and privacy, making it an ideal choice for exploring and building innovative network architectures.
+**Nautilus** is a **Rust-based** framework for developing **decentralized networks** and **secure communication systems**. It emphasizes **modularity, scalability, and privacy**, making it an ideal choice for exploring and building innovative network architectures.
 
-### Features:
+🚀 **Goal:**  
+To explore and develop a **modular structure** and frameworks aimed at experimentation and providing **Proof-of-Concept (PoC)** solutions for **future-proofing** decentralized systems.
 
-- Decentralized Identity (DID): Create and manage decentralized identifiers and verifiable credentials.
-- Public Key Infrastructure (PKI): Secure communication with modular PKI components.
-- Service Discovery: Efficient discovery of services and devices in a decentralized environment.
-- Self-Healing Networks: Support for resilient and fault-tolerant network structures.
+---
 
-### Getting Started:
+## ✨ Features
 
-**Prerequisites:**
+Nautilus provides a **rich set of features**, focusing on **privacy, security, and modularity**, empowering developers to build **next-generation decentralized solutions**.
 
-- Rust (latest stable version) – [https://www.rust-lang.org/](https://www.rust-lang.org/)
-- Cargo (comes with Rust)
-- Optional: Docker (for containerized development)
+- 🆔 **Decentralized Identity (DID):**  
+  Create and manage decentralized identifiers and verifiable credentials.
 
-**Installation Steps:**
+- 🔑 **Public Key Infrastructure (PKI):**  
+  Secure communication with modular PKI components.
 
-1. Clone the repository:
-    
-    ```bash
-    git clone https://github.com/Pierre-Aronnax/Nautilus.git
-    cd nautilus
-    ```
-    
-2. Build the project:
-    
-    ```
-    cargo build
-    ```
-    
-3. Run the tests:
-    
-    ```bash
-    cargo test
-    ```
-    
+- 🔍 **Service Discovery:**  
+  Efficient discovery of services and devices in a decentralized environment.
 
-### Usage:
+- 🔒 **Custom TLS with PQC:**  
+  Implementation of **Post-Quantum Cryptographic (PQC)** algorithms for secure identity-based transactions and **TLS encryption**.
 
-Explore the example modules and documentation available in the `examples/` directory to get started with Nautilus and integrate it into your projects. This project contains a few indepedent crates but most of them contain either a `examples` or `tests` folder, these folders hold sufficient information on how to use the sub-crates. Each crate has a specific use in mind within Nautilus but are also designed to be used for generic use-cases apart from Nautilus. 
+- 🧩 **Modular Architecture:**  
+  A **plug-and-play** architecture enabling each protocol/crate to be used independently in various scenarios.
 
-### Contributing:
+---
 
-We welcome contributions! Follow these steps to contribute:
+## 📝 Take Note Of
 
-1. Fork the repository and clone your fork.
-2. Create a new branch for your feature or fix.
-3. Commit your changes with descriptive messages.
-4. Push the branch to your fork and submit a pull request.
+Nautilus consists of **various Rust crates**, each serving as a **building block** that can be used **independently** or **together**. Each crate includes several important folders that developers should pay attention to:
 
-### License:
+- 📂 **`examples/` – Practical Usage Examples:**  
+  - Contains simple, ready-to-run examples demonstrating how to utilize the protocol.  
+  - **Tip:** Start here to get a quick understanding of implementation.
 
-Nautilus is licensed under the MIT License.
+- 🧪 **`tests/` – Unit & Integration Tests:**  
+  - Contains test cases that showcase how functions are used.  
+  - **Tip:** Great for understanding function usage and expected outcomes.
 
-### Contact:
+- ⚡ **`benchmarks/` – Performance Insights:**  
+  - Includes benchmarking tests to measure protocol performance, especially useful when dealing with cryptographic algorithms.  
+  - **Tip:** Use this to analyze efficiency and scalability under different conditions.
+
+## Contact:
 
 For any questions or suggestions, feel free to open an issue on the repository or reach out to us. We hope Nautilus inspires your journey in decentralized networking! 🌐

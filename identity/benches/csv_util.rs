@@ -1,6 +1,7 @@
 use std::fs::{create_dir_all, File};
 use std::io::{Write, BufWriter};
 
+#[allow(dead_code)]
 pub fn write_csv_results(algorithm: &str, task: &str, data: Vec<(usize, u128)>) {
     let dir_path = format!("benches/benchmark_results/{}/", algorithm);
     let file_path = format!("{}{}.csv", dir_path, task);

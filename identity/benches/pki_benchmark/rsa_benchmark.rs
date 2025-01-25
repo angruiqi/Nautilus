@@ -3,6 +3,7 @@ use identity::{PKITraits, RSAkeyPair};
 use std::time::Instant;
 use crate::csv_util::write_csv_results;
 
+#[allow(dead_code)]
 fn benchmark_rsa_keypair(_c: &mut Criterion) {
     let mut timings = Vec::new();
 
@@ -16,6 +17,7 @@ fn benchmark_rsa_keypair(_c: &mut Criterion) {
     write_csv_results("RSA", "keypair_generation", timings);
 }
 
+#[allow(dead_code)]
 fn benchmark_rsa_sign_verify(_c: &mut Criterion) {
     let keypair = RSAkeyPair::generate_key_pair().expect("Failed to generate KeyPair");
 

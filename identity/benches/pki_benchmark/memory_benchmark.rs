@@ -1,7 +1,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::fs::{self, File};
 use std::io::Write;
-use sysinfo::{System};
+use sysinfo::System;
 use identity::PKITraits;
 #[cfg(feature = "dilithium")]
 use identity::DilithiumKeyPair;
