@@ -51,6 +51,9 @@ impl TlsSession {
     pub async fn receive(&mut self) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         self.connection.receive().await.map_err(Into::into)
     }
+    pub async fn get_session_key(&self) -> Vec<u8> {
+        self.connection.get_session_key().await
+    }
 }
 
 /// Optional: An “adaptive” approach that tries to accept first (Responder),

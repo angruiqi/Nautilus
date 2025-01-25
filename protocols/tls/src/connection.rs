@@ -40,6 +40,10 @@ impl TlsConnection {
         };
         Ok(connection)
     }
+    pub async fn get_session_key(&self) -> Vec<u8> {
+        let st = self.state.lock().await;
+        st.session_key().to_vec()
+    }
 }
 
 #[async_trait]

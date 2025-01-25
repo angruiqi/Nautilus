@@ -2,8 +2,6 @@
 use async_trait::async_trait;
 use futures::future::BoxFuture;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use rand::Rng;
-use tokio::time::{sleep, Duration};
 // ----- Import Handshake traits -----
 use handshake::{HandshakeStream, HandshakeError, HandshakeStep};
 
