@@ -3,11 +3,13 @@ use aes_gcm::{Aes256Gcm, Key, Nonce};
 use aes_gcm::aead::{Aead, KeyInit};
 use std::error::Error;
 use rand::Rng;
+
+#[derive(Debug)]
 pub enum RecordType {
     Handshake,
     ApplicationData,
 }
-
+#[derive(Debug)]
 pub struct TlsRecord {
     record_type: RecordType,
     payload: Vec<u8>,
@@ -51,17 +53,24 @@ impl TlsRecord {
         data.extend(&self.payload);
         data
     }
-
     pub fn deserialize(data: &[u8]) -> Result<Self, RecordError> {
         if data.is_empty() {
+            eprintln!("[ERROR] Received empty data.");
             return Err(RecordError::InvalidRecord);
         }
+    
         let record_type = match data[0] {
             0x01 => RecordType::Handshake,
             0x02 => RecordType::ApplicationData,
-            _ => return Err(RecordError::InvalidRecord),
+            _ => {
+                eprintln!("[ERROR] Invalid record type: {}", data[0]);
+                return Err(RecordError::InvalidRecord);
+            }
         };
+        
         let payload = data[1..].to_vec();
+        println!("[DEBUG] Received record type: {:?}, Payload length: {}", record_type, payload.len());
+        
         Ok(Self { record_type, payload })
     }
 }
