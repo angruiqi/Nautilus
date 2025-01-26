@@ -5,10 +5,13 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
+# Default Dependenecies
 rand_core = {version = "0.6",features = ["getrandom"]}
 serde_json = "1.0.135"
 serde = {version = "1.0.0", features = ["derive",]}
 serde_bytes = {version = "0.11.15"}
+
+# PKI Dependencies [Feature Flagged]
 rsa = {version = "0.9.6",features = ["sha2"], optional = true} # For RSA
 sha2 = {version = "0.10.1",optional = true} # For Hashing/RSA
 
@@ -19,7 +22,7 @@ p256 = {version = "0.13.2",optional = true} # For ECDSA
 ed25519-dalek = {version = "2.1.1",optional = true} # For Ed25519
 curve25519-dalek = {version = "4.0.0",optional = true}
 
-fips203 = {version ="0.4.2",optional = true}
+fips203 = {version ="0.4.2",optional = true} # For Kyber
 
 fips204 = {version = "0.4.6",optional = true} # For Dilithium
 
@@ -38,7 +41,7 @@ ed25519 = ["ed25519-dalek","curve25519-dalek"]  # Enable Ed25519 support when th
 dilithium = ["fips204"] # Enable Dilithium support when this feature flag is specified
 spincs = ["fips205"] # Enable Spincs+ support when this feature flag is specified
 falcon = ["pqcrypto-falcon","pqcrypto-traits"] # Not FIPS STANDARD, OFFICIAL RELEASE
-kyber = ["fips203","sha2"]
+kyber = ["fips203","sha2"] # Kyber Implmentation for KEM and PKI Trait
 
 [[bench]]
 name = "benchmark"
