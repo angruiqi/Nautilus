@@ -14,6 +14,7 @@ use fips204::traits::{SerDes, Signer, Verifier};
 /// This struct encapsulates the private and public keys required for
 /// signing and verification using the Dilithium digital signature algorithm.
 #[cfg(feature = "dilithium")]
+#[derive(Clone)]
 pub struct DilithiumKeyPair {
     /// The private key used for signing.
     pub private_key: PrivateKey,
@@ -126,5 +127,14 @@ impl crate::KeySerialization for DilithiumKeyPair {
             public_key,
             private_key,
         })
+    }
+}
+
+// ================== Additional Methods ======================================
+#[cfg(feature = "dilithium")]
+impl DilithiumKeyPair {
+    /// Retrieves the private key as raw bytes.
+    pub fn private_key_raw_bytes(&self) -> Vec<u8> {
+        self.private_key.clone().into_bytes().to_vec()
     }
 }

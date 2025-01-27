@@ -1,0 +1,9 @@
+[package]
+name = "udp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nautilus_core = {path = "../../core"}
+tokio = {version = "1.0.0",features = ["full"]}
+async-trait = {version = "0.1.85"}

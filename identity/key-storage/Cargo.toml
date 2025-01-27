@@ -4,19 +4,21 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Default Dependenecies
 serde = { version = "1.0", features = ["derive"] }
 serde_json = {version = "1.0"}
-# For Windows Dependencies
+pem = {version = "3.0.4"} # For File Format Coversion
+
+# For Windows Dependencies => {Feature Flagged : True, Features : [tsm,keyring]}
 bincode = {version = "1.3.3",optional = true}
 winapi = { version = "0.3.9", features = ["dpapi", "errhandlingapi", "winbase", "minwindef", "wincrypt","wincred"] , optional = true}
 
-# For Linux Dependencies
+# For Linux Dependencies => {Feature Flagged : True, Features : [linx_secure_storage]}
 linux-keyutils = {version = "0.2.4",optional = true}
 
-# For File Format Coversion
-pem = {version = "3.0.4"}
-
-# data_encryption = {path = "../../security/data_encryption",features = ["pbkdf"]}
+# For Cloud Storage => {Feature Flagged : True, Features : [amazon_secure_kms]}
+aws-config = {version = "1.5.13",optional = true}
+aws-sdk-kms ={ version = "1.54",optional = true}
 
 [features]
 default = ["memory"] # Features enabled by default
@@ -24,3 +26,4 @@ memory = ["bincode"]  # Feature flag for in-memory storage
 keyring = ["winapi"]
 tsm = ["winapi"]
 linux_secure_storage = ["linux-keyutils"] # Linux secure storage feature
+amazon_secure_kms = ["aws-config","aws-sdk-kms"]

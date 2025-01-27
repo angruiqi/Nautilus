@@ -1,10 +1,17 @@
 // protocols\mdns\src\behaviour.rs
-mod mdns_event;
-pub use mdns_event::MdnsEvent;
-mod mdns_error;
-pub use mdns_error::MdnsError;
-mod mdns_service;
 
+// =================================================
+// Module Imports
+mod mdns_event;
+mod mdns_error;
+mod mdns_service;
 mod records;
-pub use records::MdnsRegistry;
+
+// =================================================
+
+// Public Exports
+pub use mdns_event::MdnsEvent;
+pub use mdns_error::MdnsError;
 pub use mdns_service::MdnsService;
+pub use records::{MdnsRegistry, ServiceRecord, NodeRecord};
+// =================================================

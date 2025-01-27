@@ -12,6 +12,7 @@ use std::io::{Read, Write};
 
 // ========================= ChaCha20Encryption Struct =========================
 #[cfg(feature = "chacha20")]
+#[derive(Clone,Debug)]
 pub struct ChaCha20Encryption {
     key: Vec<u8>,
     nonce: Vec<u8>,

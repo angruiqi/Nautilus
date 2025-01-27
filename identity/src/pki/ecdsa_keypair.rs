@@ -21,6 +21,7 @@ use rand_core::OsRng;
 
 // ======================= ECDSA Key Pair Definition =======================
 #[cfg(feature = "ecdsa")]
+#[derive(Clone)]
 pub struct ECDSAKeyPair {
     pub signing_key: SigningKey,
     pub verifying_key: VerifyingKey,

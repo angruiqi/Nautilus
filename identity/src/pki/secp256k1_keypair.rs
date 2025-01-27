@@ -15,6 +15,7 @@ use k256::elliptic_curve::sec1::ToEncodedPoint;
 
 // ======================= SECP256K1 Key Pair Definition =======================
 #[cfg(feature = "secp256k1")]
+#[derive(Clone)]
 pub struct SECP256K1KeyPair {
     pub signing_key: SigningKey,
     pub verifying_key: VerifyingKey,

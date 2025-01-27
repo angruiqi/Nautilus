@@ -7,6 +7,12 @@ edition = "2021"
 nautilus_core = {path = "../../core"}
 tokio = {version = "1.0.0",features = ["full"]}
 async-trait = {version = "0.1.85"}
-
+socket2 = "0.5"
+tls = {path = "../../protocols/tls"}
+handshake = {path = "../../protocols/handshake"}
 [features]
 framing = []
+tls_layer = []
+
+[dev-dependencies]
+futures = {version = "0.3.28"}

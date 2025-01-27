@@ -1,5 +1,7 @@
+// identity\src\cipher_suite.rs
 /// Enum representing supported cipher suites in the Nautilus Handshake Protocol.
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Serialize,Deserialize};
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum CipherSuite {
     /// RSA (PKI-based Signature Scheme)
     #[cfg(feature = "pki_rsa")]
@@ -32,10 +34,6 @@ pub enum CipherSuite {
     /// Kyber (Post-Quantum Key Encapsulation Mechanism)
     #[cfg(feature = "kyber")]
     Kyber { priority: u8 },
-
-    /// Hybrid KEM (Combination of Classical and Post-Quantum KEM)
-    #[cfg(feature = "hybrid_kem")]
-    HybridKEM { priority: u8 },
 
     /// Custom cipher suite for advanced or experimental use cases.
     Custom { name: String, priority: u8 },
@@ -90,6 +88,7 @@ impl CipherSuite {
 
     /// Returns a list of supported Signature/Verification schemes.
     pub fn supported_signature_schemes() -> Vec<String> {
+        #[allow(unused_mut)]
         let mut schemes = vec![];
 
         #[cfg(feature = "pki_rsa")]

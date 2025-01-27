@@ -15,6 +15,7 @@ use std::io::{Read, Write};
 
 // ========================= DesEncryption Struct =========================
 #[cfg(feature = "3des")]
+#[derive(Clone,Debug)]
 pub struct DesEncryption {
     key: Vec<u8>,
 }
